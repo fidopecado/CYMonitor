@@ -23,6 +23,10 @@
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite graphSprite = TFT_eSprite(&tft);
+TFT_eSprite dvdSprite = TFT_eSprite(&tft);
+bool dvdSpriteReady = false;
+const int DVD_W = 70;
+const int DVD_H = 32;
 
 // =========================================================================
 //  PAGE NAVIGATION & SUB-PAGE STATE
@@ -43,15 +47,12 @@ unsigned long lastTouchTime = 0;
 uint16_t touchStartX = 0;
 uint16_t touchStartY = 0;
 
-// Settings Page Tabs & Scroll
+// Settings Page Tabs & Theme Paging
 int settingsTab = 0; // 0 = saved networks, 1 = themes
-int settingsScrollY = 0;
-int dragStartY = 0;
-int startScrollY = 0;
 bool isDraggingSettings = false;
+uint16_t lastTouchY = 0;
 unsigned long touchStartMillis = 0;
 bool longPressFired = false;
-#define MAX_SETTINGS_SCROLL 382
 
 // =========================================================================
 //  PING TARGETS CONFIGURATION
@@ -187,6 +188,13 @@ const ThemePalette *ALL_THEMES[TOTAL_THEMES] = {
     &THEME_DUOTONE, &THEME_EINK, &THEME_EMERALD, &THEME_DRACULA, &THEME_OCEAN,
     &THEME_SUNSET, &THEME_SOLAR, &THEME_AMBER, &THEME_MATRIX, &THEME_MIDNIGHT,
     &THEME_CRIMSON, &THEME_MAROON, &THEME_CYBER_RED, &THEME_RUBY, &THEME_VERMILION};
+
+// Theme browser: six fully visible cards per page (3 rows x 2 columns).
+const int THEME_COLS = 2;
+const int THEME_ROWS = 3;
+const int THEME_PAGE_SIZE = THEME_COLS * THEME_ROWS;
+const int THEME_PAGES = (TOTAL_THEMES + THEME_PAGE_SIZE - 1) / THEME_PAGE_SIZE;
+int themePage = 0;
 
 // =========================================================================
 //  DATA BUFFERS
@@ -2161,6 +2169,19 @@ void updateClockPage(bool secondChanged)
   tft.setTextDatum(TL_DATUM);
 }
 
+void buildDvdSprite()
+{
+  if (!dvdSpriteReady)
+    return;
+  dvdSprite.fillSprite(0x0000);
+  dvdSprite.fillRoundRect(0, 0, DVD_W, DVD_H, 6, dvdColor);
+  dvdSprite.setTextDatum(MC_DATUM);
+  dvdSprite.setTextFont(2);
+  dvdSprite.setTextColor(0x0000, dvdColor);
+  dvdSprite.drawString("CYD 3.5", DVD_W / 2, DVD_H / 2);
+  dvdSprite.setTextDatum(TL_DATUM);
+}
+
 void initAnimation()
 {
   tft.fillRoundRect(8, 36, 464, 279, 8, 0x0000);
@@ -2193,6 +2214,7 @@ void initAnimation()
     dvdVX = 3;
     dvdVY = 2;
     dvdColor = T.accent1;
+    buildDvdSprite();
   }
   animFrameCount = 0;
   lastFpsTime = millis();
@@ -2260,7 +2282,7 @@ void renderStarfieldFrame()
 
 void renderDvdFrame()
 {
-  int w = 70, h = 32, oldX = dvdX, oldY = dvdY;
+  int w = DVD_W, h = DVD_H, oldX = dvdX, oldY = dvdY;
   dvdX += dvdVX;
   dvdY += dvdVY;
   bool hit = false;
@@ -2292,16 +2314,42 @@ void renderDvdFrame()
   {
     uint16_t colors[] = {T.accent1, T.accent2, T.accent3, T.gold, T.tempCool, T.tempWarm};
     dvdColor = colors[random(0, 6)];
+    buildDvdSprite();
   }
 
-  // Clear the whole old box. The previous strip-only clear left a ghost
-  // rectangle during diagonal movement, which made the DVD look torn.
-  tft.fillRect(oldX, oldY, w, h, 0x0000);
+  // Clear only the parts of the old box that the new box does not cover.
+  // Clearing the whole old box made the overlap blink every frame.
+  int ix1 = max(oldX, dvdX);
+  int iy1 = max(oldY, dvdY);
+  int ix2 = min(oldX + w, dvdX + w);
+  int iy2 = min(oldY + h, dvdY + h);
+  if (ix1 < ix2 && iy1 < iy2)
+  {
+    if (oldY < iy1)
+      tft.fillRect(oldX, oldY, w, iy1 - oldY, 0x0000);
+    if (oldY + h > iy2)
+      tft.fillRect(oldX, iy2, w, (oldY + h) - iy2, 0x0000);
+    if (oldX < ix1)
+      tft.fillRect(oldX, iy1, ix1 - oldX, iy2 - iy1, 0x0000);
+    if (oldX + w > ix2)
+      tft.fillRect(ix2, iy1, (oldX + w) - ix2, iy2 - iy1, 0x0000);
+  }
+  else
+  {
+    tft.fillRect(oldX, oldY, w, h, 0x0000);
+  }
 
-  tft.fillRoundRect(dvdX, dvdY, w, h, 6, dvdColor);
-  tft.setTextFont(2);
-  tft.setTextColor(0x0000, dvdColor);
-  drawCenteredText("CYD 3.5", dvdX + w / 2, dvdY + h / 2, 2);
+  if (dvdSpriteReady)
+  {
+    dvdSprite.pushSprite(dvdX, dvdY);
+  }
+  else
+  {
+    tft.fillRoundRect(dvdX, dvdY, w, h, 6, dvdColor);
+    tft.setTextFont(2);
+    tft.setTextColor(0x0000, dvdColor);
+    drawCenteredText("CYD 3.5", dvdX + w / 2, dvdY + h / 2, 2);
+  }
 }
 
 void renderAnimationFrame()
@@ -2442,84 +2490,119 @@ void drawNetworkSettings()
   drawCenteredText("ADD / CHANGE NETWORK", 240, 275, 2);
 }
 
+void drawThemeCard(int index, int sx, int sy)
+{
+  const ThemePalette *th = ALL_THEMES[index];
+  bool isSelected = (index == selectedTheme);
+  const int sw = 220;
+  const int sh = 66;
+
+  tft.fillRect(sx, sy, sw, sh, th->cardBg);
+  uint16_t borderColor = isSelected ? T.gold : th->cardBorder;
+  tft.drawRoundRect(sx, sy, sw, sh, 6, borderColor);
+  if (isSelected)
+  {
+    tft.drawRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, 5, T.gold);
+    tft.fillRoundRect(sx + 4, sy + 10, 3, sh - 20, 1, T.gold);
+  }
+
+  tft.setTextFont(2);
+  tft.setTextColor(isSelected ? T.gold : th->textWhite, th->cardBg);
+  tft.drawString(th->name, sx + 12, sy + 5);
+
+  uint16_t pal[15] = {th->bg, th->cardBg, th->cardBorder, th->headerBg, th->barTrack,
+                      th->textWhite, th->textMuted, th->textDark, th->tempCool,
+                      th->tempWarm, th->tempHot, th->accent1, th->accent2,
+                      th->accent3, th->gold};
+  for (int c = 0; c < 15; c++)
+  {
+    tft.fillRect(sx + 13 + c * 13, sy + 28, 12, 12, pal[c]);
+    tft.drawRect(sx + 13 + c * 13, sy + 28, 12, 12, th->cardBorder);
+  }
+
+  tft.fillRect(sx + 12, sy + 44, 196, 14, th->headerBg);
+  tft.drawRect(sx + 12, sy + 44, 196, 14, th->cardBorder);
+  tft.setTextFont(1);
+  tft.setTextColor(th->textMuted, th->headerBg);
+  tft.drawString("BG CARD TXT STATUS ACC", sx + 16, sy + 47);
+}
+
+void drawThemeFooter()
+{
+  char hint[64];
+  snprintf(hint, sizeof(hint), "SWIPE UP/DOWN FOR MORE  |  PAGE %d/%d",
+           themePage + 1, THEME_PAGES);
+  tft.fillRect(16, 294, 448, 12, T.cardBg);
+  tft.setTextFont(1);
+  tft.setTextColor(T.textMuted, T.cardBg);
+  drawCenteredText(hint, 240, 300, 1);
+}
+
 void drawThemeSettings()
 {
   tft.setTextDatum(TL_DATUM);
   const int contentTop = 82;
   const int contentBottom = 290;
+  const int contentLeft = 10;
+  const int contentRight = 470;
+  const int cardW = 220;
+  const int cardH = 66;
+  const int rowPitch = 70;
+  const int colX[THEME_COLS] = {16, 244};
 
-  for (int i = 0; i < TOTAL_THEMES; i++)
+  // Paint only the gaps and empty cells. The cards are opaque, so this
+  // avoids the full-area clear that made paging look like a flash.
+  tft.fillRect(contentLeft, 80, contentRight - contentLeft, contentTop - 80, T.cardBg);
+  const int gridBottom = contentTop + THEME_ROWS * rowPitch - (rowPitch - cardH);
+  tft.fillRect(contentLeft, gridBottom, contentRight - contentLeft, contentBottom - gridBottom, T.cardBg);
+
+  for (int row = 0; row < THEME_ROWS; row++)
   {
-    int col = i % 2;
-    int row = i / 2;
-    int sx = 16 + col * 228;
-    int sy = 82 + row * 74 - settingsScrollY;
-    int sw = 220;
-    int sh = 66;
-
-    if (sy + sh < contentTop || sy > contentBottom)
-      continue;
-
-    const ThemePalette *th = ALL_THEMES[i];
-    bool isSelected = (i == selectedTheme);
-
-    int drawY = max(contentTop, sy);
-    int drawH = min(contentBottom, sy + sh) - drawY;
-    if (drawH <= 0)
-      continue;
-
-    tft.fillRect(sx, drawY, sw, drawH, th->cardBg);
-    uint16_t borderColor = isSelected ? T.gold : th->cardBorder;
-
-    if (sy >= contentTop && sy + sh <= contentBottom)
-    {
-      tft.drawRoundRect(sx, sy, sw, sh, 6, borderColor);
-      if (isSelected)
-      {
-        tft.drawRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, 5, T.gold);
-        tft.fillRoundRect(sx + 4, sy + 10, 3, sh - 20, 1, T.gold);
-      }
-    }
-    else
-    {
-      if (sy >= contentTop)
-        tft.drawFastHLine(sx, sy, sw, borderColor);
-      if (sy + sh <= contentBottom)
-        tft.drawFastHLine(sx, sy + sh - 1, sw, borderColor);
-      tft.drawFastVLine(sx, drawY, drawH, borderColor);
-      tft.drawFastVLine(sx + sw - 1, drawY, drawH, borderColor);
-    }
-
-    // Only draw the contents once the card is fully visible; this makes
-    // scrolling clean without clipping text.
-    if (sy < contentTop || sy + sh > contentBottom)
-      continue;
-
-    tft.setTextFont(2);
-    tft.setTextColor(isSelected ? T.gold : th->textWhite, th->cardBg);
-    tft.drawString(th->name, sx + 12, sy + 5);
-
-    uint16_t pal[15] = {th->bg, th->cardBg, th->cardBorder, th->headerBg, th->barTrack,
-                        th->textWhite, th->textMuted, th->textDark, th->tempCool,
-                        th->tempWarm, th->tempHot, th->accent1, th->accent2,
-                        th->accent3, th->gold};
-    for (int c = 0; c < 15; c++)
-    {
-      tft.fillRect(sx + 13 + c * 13, sy + 28, 12, 12, pal[c]);
-      tft.drawRect(sx + 13 + c * 13, sy + 28, 12, 12, th->cardBorder);
-    }
-
-    tft.fillRect(sx + 12, sy + 44, 196, 14, th->headerBg);
-    tft.drawRect(sx + 12, sy + 44, 196, 14, th->cardBorder);
-    tft.setTextFont(1);
-    tft.setTextColor(th->textMuted, th->headerBg);
-    tft.drawString("BG CARD TXT STATUS ACC", sx + 16, sy + 47);
+    int y = contentTop + row * rowPitch;
+    tft.fillRect(contentLeft, y, colX[0] - contentLeft, cardH, T.cardBg);
+    tft.fillRect(colX[0] + cardW, y, colX[1] - (colX[0] + cardW), cardH, T.cardBg);
+    tft.fillRect(colX[1] + cardW, y, contentRight - (colX[1] + cardW), cardH, T.cardBg);
+  }
+  for (int row = 0; row < THEME_ROWS - 1; row++)
+  {
+    int gapY = contentTop + row * rowPitch + cardH;
+    tft.fillRect(contentLeft, gapY, contentRight - contentLeft, rowPitch - cardH, T.cardBg);
   }
 
-  tft.fillRect(465, 82, 6, 208, T.headerBg);
-  int barH = max(28, 208 * 208 / (8 * 74));
-  int barY = 82 + (settingsScrollY * (208 - barH)) / max(1, MAX_SETTINGS_SCROLL);
-  tft.fillRoundRect(465, barY, 6, barH, 2, T.gold);
+  int first = themePage * THEME_PAGE_SIZE;
+  int last = min(first + THEME_PAGE_SIZE, TOTAL_THEMES);
+  for (int i = first; i < last; i++)
+  {
+    int slot = i - first;
+    int col = slot % THEME_COLS;
+    int row = slot / THEME_COLS;
+    drawThemeCard(i, colX[col], contentTop + row * rowPitch);
+  }
+
+  // The final page has fewer than six themes; clear the unused cells.
+  for (int slot = last - first; slot < THEME_PAGE_SIZE; slot++)
+  {
+    int col = slot % THEME_COLS;
+    int row = slot / THEME_COLS;
+    tft.fillRect(colX[col], contentTop + row * rowPitch, cardW, cardH, T.cardBg);
+  }
+
+  // Page indicator on the right edge.
+  int segmentH = 60;
+  int segmentGap = 8;
+  int totalH = THEME_PAGES * segmentH + (THEME_PAGES - 1) * segmentGap;
+  int indicatorY = contentTop + (contentBottom - contentTop - totalH) / 2;
+  for (int p = 0; p < THEME_PAGES; p++)
+  {
+    uint16_t color = (p == themePage) ? T.gold : T.cardBorder;
+    tft.fillRoundRect(466, indicatorY + p * (segmentH + segmentGap), 4, segmentH, 2, color);
+  }
+}
+
+void refreshThemePage()
+{
+  drawThemeFooter();
+  drawThemeSettings();
 }
 
 void drawSettingsPage()
@@ -2562,7 +2645,7 @@ void drawSettingsPage()
   if (settingsTab == 0)
     drawCenteredText("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
   else
-    drawCenteredText("SWIPE UP/DOWN TO SCROLL  |  TAP A THEME TO APPLY", 240, 300, 1);
+    drawThemeFooter();
 
   tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
   drawSettingsContent();
@@ -2570,7 +2653,6 @@ void drawSettingsPage()
 
 void drawSettingsContent()
 {
-  tft.fillRect(10, 80, 460, 212, T.cardBg);
   if (settingsTab == 0)
     drawNetworkSettings();
   else
@@ -2634,6 +2716,11 @@ void setup()
   if (!graphSprite.createSprite(212, 104))
     Serial.println("Sprite error!");
 
+  dvdSprite.setColorDepth(16);
+  dvdSpriteReady = (dvdSprite.createSprite(DVD_W, DVD_H) != nullptr);
+  if (!dvdSpriteReady)
+    Serial.println("DVD sprite error!");
+
   for (int i = 0; i < HISTORY_LEN; i++)
   {
     cpuHistory[i] = 0.0;
@@ -2696,9 +2783,8 @@ void loop()
       lastTouchTime = currentMillis;
       touchStartX = currentX;
       touchStartY = currentY;
+      lastTouchY = currentY;
       touchStartMillis = currentMillis;
-      dragStartY = currentY;
-      startScrollY = settingsScrollY;
       isDraggingSettings = false;
       longPressFired = false;
 
@@ -2707,18 +2793,10 @@ void loop()
     }
     else
     {
-      if (currentPage == 3 && settingsTab == 1 &&
-          abs((int)currentY - dragStartY) > 6)
-      {
+      lastTouchY = currentY;
+      if (currentPage == 3 &&
+          abs((int)currentY - (int)touchStartY) > 12)
         isDraggingSettings = true;
-        int deltaY = (int)currentY - dragStartY;
-        int newScroll = constrain(startScrollY - deltaY, 0, MAX_SETTINGS_SCROLL);
-        if (newScroll != settingsScrollY)
-        {
-          settingsScrollY = newScroll;
-          drawSettingsContent();
-        }
-      }
 
       if (currentPage == 3 && settingsTab == 0 && !isDraggingSettings &&
           !longPressFired && (currentMillis - touchStartMillis > 800))
@@ -2856,17 +2934,16 @@ void loop()
           if (touchX >= 16 && touchX <= 236 && settingsTab != 0)
           {
             settingsTab = 0;
-            settingsScrollY = 0;
             drawSettingsPage();
           }
           else if (touchX >= 244 && touchX <= 464 && settingsTab != 1)
           {
             settingsTab = 1;
-            settingsScrollY = 0;
+            themePage = 0;
             drawSettingsPage();
           }
         }
-        else if (settingsTab == 0)
+        else if (settingsTab == 0 && !isDraggingSettings)
         {
           if (touchY >= 262 && touchY <= 288 && touchX >= 16 && touchX <= 464)
           {
@@ -2911,17 +2988,30 @@ void loop()
             }
           }
         }
-        else if (!isDraggingSettings && touchY >= 82 && touchY <= 290)
+        else if (settingsTab == 1)
         {
-          int row = (touchY - 82 + settingsScrollY) / 74;
-          int col = (touchX >= 238) ? 1 : 0;
-          int cardX = col ? 244 : 16;
-          int cardY = 82 + row * 74 - settingsScrollY;
-          if (touchY >= cardY && touchY <= cardY + 66 &&
-              touchX >= cardX && touchX <= cardX + 220)
+          int swipe = (int)touchStartY - (int)lastTouchY; // positive = swipe up
+          if (isDraggingSettings && abs(swipe) >= 20)
           {
-            int tappedTheme = row * 2 + col;
-            if (tappedTheme >= 0 && tappedTheme < TOTAL_THEMES &&
+            int newPage = constrain(themePage + (swipe > 0 ? 1 : -1), 0, THEME_PAGES - 1);
+            if (newPage != themePage)
+            {
+              themePage = newPage;
+              refreshThemePage();
+            }
+          }
+          else if (!isDraggingSettings && touchY >= 82 && touchY <= 290)
+          {
+            int slotRow = (touchY - 82) / 70;
+            int col = (touchX >= 238) ? 1 : 0;
+            int cardX = col ? 244 : 16;
+            int cardY = 82 + slotRow * 70;
+            int slot = slotRow * 2 + col;
+            int tappedTheme = themePage * THEME_PAGE_SIZE + slot;
+            if (slotRow >= 0 && slotRow < THEME_ROWS &&
+                touchY >= cardY && touchY <= cardY + 66 &&
+                touchX >= cardX && touchX <= cardX + 220 &&
+                tappedTheme >= 0 && tappedTheme < TOTAL_THEMES &&
                 tappedTheme != selectedTheme)
             {
               applyTheme(tappedTheme);
@@ -2986,7 +3076,12 @@ void loop()
   }
   else if (currentPage == 2)
   {
-    renderAnimationFrame();
+    static unsigned long lastAnimFrame = 0;
+    if (currentMillis - lastAnimFrame >= 16)
+    {
+      lastAnimFrame = currentMillis;
+      renderAnimationFrame();
+    }
     if (currentMillis - lastHeaderTick >= 1000)
     {
       lastHeaderTick = currentMillis;
