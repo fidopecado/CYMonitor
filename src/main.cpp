@@ -4,10 +4,8 @@
 #include <ArduinoJson.h>
 #include <TFT_eSPI.h>
 #include <Preferences.h>
-#include <AnimatedGIF.h>
 #include <WiFiManager.h> // Library Captive Portal WiFi
 #include "time.h"
-#include "gif_data.h" // File data GIF
 
 // =========================================================================
 //  HARDWARE, DISPLAY, & PWM AUTO-BRIGHTNESS CONFIGURATION (CYD 3.5")
@@ -25,8 +23,6 @@
 
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite graphSprite = TFT_eSprite(&tft);
-AnimatedGIF gif;
-bool gifIsOpen = false;
 
 // =========================================================================
 //  PAGE NAVIGATION & SUB-PAGE STATE
@@ -167,8 +163,8 @@ int historyCount = 0;
 //  ANIMATION PAGE STATE
 // =========================================================================
 int currentAnim = 0;
-const int TOTAL_ANIMS = 4;
-const char *animNames[4] = {"MATRIX RAIN", "STARFIELD 3D", "BOUNCING DVD", "GIF ANIMATION"};
+const int TOTAL_ANIMS = 3;
+const char *animNames[3] = {"MATRIX RAIN", "STARFIELD 3D", "BOUNCING DVD"};
 
 #define MATRIX_COLS 36
 int matrixY[MATRIX_COLS], matrixSpeed[MATRIX_COLS], matrixLen[MATRIX_COLS];
@@ -242,67 +238,6 @@ long measureLatency(const char* host, uint16_t port = 80) {
     return lat;
   }
   return -1;
-}
-
-// =========================================================================
-//  GIF DRAW CALLBACK
-// =========================================================================
-void GIFDraw(GIFDRAW *pDraw)
-{
-  uint8_t *s;
-  uint16_t *palette;
-  int x, y, iWidth;
-
-  int offsetX = (480 - pDraw->iWidth) / 2;
-  int offsetY = 36 + (240 - pDraw->iHeight) / 2;
-
-  palette = pDraw->pPalette;
-  s = pDraw->pPixels;
-  iWidth = pDraw->iWidth;
-
-  if (pDraw->y >= pDraw->iHeight)
-    return;
-
-  y = pDraw->iY + pDraw->y;
-  x = pDraw->iX;
-
-  if (pDraw->ucHasTransparency)
-  {
-    uint8_t ucTransparent = pDraw->ucTransparent;
-    int iCount = 0;
-    uint16_t usPixels[320];
-    int iX = pDraw->iX;
-
-    for (int i = 0; i < iWidth; i++)
-    {
-      if (s[i] == ucTransparent)
-      {
-        if (iCount > 0)
-        {
-          tft.pushImage(offsetX + iX, offsetY + y, iCount, 1, usPixels);
-          iCount = 0;
-        }
-        iX = pDraw->iX + i + 1;
-      }
-      else
-      {
-        usPixels[iCount++] = palette[s[i]];
-      }
-    }
-    if (iCount > 0)
-    {
-      tft.pushImage(offsetX + iX, offsetY + y, iCount, 1, usPixels);
-    }
-  }
-  else
-  {
-    uint16_t usPixels[320];
-    for (int i = 0; i < iWidth; i++)
-    {
-      usPixels[i] = palette[s[i]];
-    }
-    tft.pushImage(offsetX + x, offsetY + y, iWidth, 1, usPixels);
-  }
 }
 
 // =========================================================================
@@ -1083,11 +1018,6 @@ void updateClockPage(bool secondChanged)
 
 void initAnimation()
 {
-  if (gifIsOpen)
-  {
-    gif.close();
-    gifIsOpen = false;
-  }
   tft.fillRoundRect(8, 36, 464, 279, 8, 0x0000);
   tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
   tft.fillRect(16, 282, 448, 24, 0x0821);
@@ -1118,12 +1048,6 @@ void initAnimation()
     dvdVX = 3;
     dvdVY = 2;
     dvdColor = T.accent1;
-  }
-  else if (currentAnim == 3)
-  {
-    gif.begin(GIF_PALETTE_RGB565_BE);
-    if (gif.open((uint8_t *)my_gif_data, my_gif_size, GIFDraw))
-      gifIsOpen = true;
   }
   animFrameCount = 0;
   lastFpsTime = millis();
@@ -1225,26 +1149,6 @@ void renderDvdFrame()
   tft.drawCentreString("CYD 3.5", dvdX + w / 2, dvdY + 8, 2);
 }
 
-void renderGifFrame()
-{
-  if (!gifIsOpen)
-  {
-    gif.begin(GIF_PALETTE_RGB565_BE);
-    if (gif.open((uint8_t *)my_gif_data, my_gif_size, GIFDraw))
-      gifIsOpen = true;
-    else
-      return;
-  }
-  if (gif.playFrame(true, NULL) == 0)
-  {
-    gif.close();
-    if (gif.open((uint8_t *)my_gif_data, my_gif_size, GIFDraw))
-      gifIsOpen = true;
-    else
-      gifIsOpen = false;
-  }
-}
-
 void renderAnimationFrame()
 {
   switch (currentAnim)
@@ -1257,9 +1161,6 @@ void renderAnimationFrame()
     break;
   case 2:
     renderDvdFrame();
-    break;
-  case 3:
-    renderGifFrame();
     break;
   }
   animFrameCount++;
@@ -1389,11 +1290,6 @@ void switchPage(int newPage)
   if (newPage < 0 || newPage >= TOTAL_PAGES)
     return;
   currentPage = newPage;
-  if (gifIsOpen)
-  {
-    gif.close();
-    gifIsOpen = false;
-  }
 
   tft.fillRect(0, 32, 480, 288, T.bg);
   drawHeaderTabs();
