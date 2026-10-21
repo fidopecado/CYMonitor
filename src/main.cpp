@@ -43,12 +43,15 @@ unsigned long lastTouchTime = 0;
 uint16_t touchStartX = 0;
 uint16_t touchStartY = 0;
 
-// Settings Page Scroll
+// Settings Page Tabs & Scroll
+int settingsTab = 0; // 0 = saved networks, 1 = themes
 int settingsScrollY = 0;
 int dragStartY = 0;
 int startScrollY = 0;
 bool isDraggingSettings = false;
-#define MAX_SETTINGS_SCROLL 360
+unsigned long touchStartMillis = 0;
+bool longPressFired = false;
+#define MAX_SETTINGS_SCROLL 382
 
 // =========================================================================
 //  PING TARGETS CONFIGURATION
@@ -81,34 +84,69 @@ unsigned long pomodoroDurationMs = 0;
 unsigned long pomodoroBlinkStart = 0;
 
 // =========================================================================
-//  NETWORK & SENSOR CONFIGURATION
+//  SAVED NETWORKS & DATA SOURCE
+//  Every saved Wi-Fi profile also remembers the LibreHardwareMonitor URL
+//  that belongs to that network, so switching networks switches the source.
 // =========================================================================
-char serverUrl[128] = "http://192.168.1.50:8085/data.json"; // URL Dinamis via WiFiManager
+#define MAX_WIFI_PROFILES 6
+#define WIFI_AP_SSID "CYD-MONITOR-AP"
+#define WIFI_AP_PASS "password123"
+
+struct WifiProfile
+{
+  String ssid;
+  String pass;
+  String url;
+};
+
+WifiProfile wifiProfiles[MAX_WIFI_PROFILES];
+int wifiProfileCount = 0;
+int activeProfile = -1;
+volatile bool networkBusy = false;
+
+char serverUrl[128] = "http://192.168.1.50:8085/data.json";
+SemaphoreHandle_t configMutex = NULL;
 
 const char *ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 7 * 3600; // WIB (GMT+7)
 const int daylightOffset_sec = 0;
 
-// LibreHardwareMonitor Sensor IDs
-const String CPU_TEMP_ID = "/amdcpu/0/temperature/2";
-const String CPU_LOAD_ID = "/amdcpu/0/load/0";
-const String CPU_POWER_ID = "/amdcpu/0/power/0";
-const String CPU_FAN_ID = "/lpc/nct6779d/0/fan/1";
+// =========================================================================
+//  LIVE HARDWARE SNAPSHOT
+//  Filled by walking whatever hardware tree LibreHardwareMonitor exposes,
+//  so AMD / Intel / NVIDIA and desktop / laptop all work without edits.
+// =========================================================================
+struct LiveData
+{
+  char cpuName[44] = "CPU";
+  char gpuName[44] = "GPU";
 
-const String GPU_CORE_ID = "/gpu-amd/0/temperature/0";
-const String GPU_HOTSPOT_ID = "/gpu-amd/0/temperature/7";
-const String GPU_LOAD_ID = "/gpu-amd/0/load/0";
-const String GPU_VRAM_ID = "/gpu-amd/0/smalldata/0";
+  float cpuTemp = 0.0f, cpuLoad = 0.0f, cpuPower = 0.0f;
+  int cpuFan = 0;
+  bool cpuHasTemp = false;
 
-const String RAM_LOAD_ID = "/ram/load/0";
-const String RAM_USED_ID = "/ram/data/0";
-const String RAM_AVAIL_ID = "/ram/data/1";
+  float gpuTemp = 0.0f, gpuHot = 0.0f, gpuLoad = 0.0f;
+  float gpuMemUsed = 0.0f, gpuMemTotal = 0.0f;
+  bool gpuHasTemp = false, gpuHasHotspot = false, gpuHasMem = false;
+
+  float ramLoad = 0.0f, ramUsed = 0.0f, ramTotal = 0.0f;
+  bool ramValid = false;
+  bool valid = false;
+};
+
+LiveData liveData;
+SemaphoreHandle_t dataMutex = NULL;
 
 TaskHandle_t httpTaskHandle = NULL;
 volatile unsigned long lastSuccessFetch = 0;
 volatile bool dataUpdated = false;
 
 Preferences prefs;
+
+// Defined later, declared here for the HTTP task and UI.
+String getServerUrl();
+void setServerUrl(const String &url);
+void resetTelemetry();
 
 // =========================================================================
 //  THEME SYSTEM (15 Themes)
@@ -149,11 +187,6 @@ const ThemePalette *ALL_THEMES[TOTAL_THEMES] = {
 // =========================================================================
 //  DATA BUFFERS
 // =========================================================================
-float currentCpuTemp = 0.0, currentCpuLoad = 0.0, currentCpuPower = 0.0;
-int currentCpuFan = 0;
-float currentGpuCore = 0.0, currentGpuHot = 0.0, currentGpuLoad = 0.0, currentGpuVram = 0.0;
-float currentRamLoad = 0.0, currentRamUsed = 0.0, currentRamTotal = 16.0;
-
 #define HISTORY_LEN 40
 float cpuHistory[HISTORY_LEN];
 float gpuHistory[HISTORY_LEN];
@@ -253,45 +286,454 @@ void applyTheme(int themeIndex)
 }
 
 // =========================================================================
-//  HELPER FUNCTIONS
+//  ADAPTIVE SENSOR DISCOVERY
+//  Walks the LibreHardwareMonitor tree once and matches by hardware id,
+//  sensor type and label instead of hard-coded motherboard-specific ids.
 // =========================================================================
-float parseFloatValue(String str)
+enum HardwareKind : uint8_t
 {
-  str.replace(",", ".");
-  int start = -1;
-  for (unsigned int i = 0; i < str.length(); i++)
+  HW_OTHER = 0,
+  HW_CPU,
+  HW_GPU,
+  HW_RAM
+};
+
+bool icontains(const char *haystack, const char *needle)
+{
+  if (!haystack || !needle || !needle[0])
+    return false;
+  size_t needleLen = strlen(needle);
+  for (const char *p = haystack; *p; ++p)
   {
-    if (isDigit(str[i]) || str[i] == '-' || str[i] == '.')
+    size_t i = 0;
+    while (i < needleLen && p[i] &&
+           tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i]))
+      i++;
+    if (i == needleLen)
+      return true;
+  }
+  return false;
+}
+
+float parseSensorValue(const char *text)
+{
+  if (!text)
+    return 0.0f;
+  char buffer[20];
+  int n = 0;
+  bool started = false;
+  for (const char *p = text; *p && n < 19; ++p)
+  {
+    if ((*p >= '0' && *p <= '9') || *p == '-' || *p == '+' || *p == '.')
     {
-      start = i;
+      buffer[n++] = *p;
+      started = true;
+    }
+    else if (*p == ',' && started)
+    {
+      buffer[n++] = '.';
+    }
+    else if (started)
+    {
       break;
     }
   }
-  if (start == -1)
-    return 0.0;
-  return str.substring(start).toFloat();
+  buffer[n] = '\0';
+  return n > 0 ? (float)atof(buffer) : 0.0f;
 }
 
-String findSensorBySensorId(JsonVariant node, const String &targetSensorId)
+void stripSuffix(String &value, const char *suffix)
 {
-  if (node.is<JsonObject>())
+  int pos = value.indexOf(suffix);
+  if (pos > 0)
+    value.remove(pos);
+}
+
+void shortCpuName(const char *raw, char *out, size_t outSize)
+{
+  String name((raw && raw[0]) ? raw : "CPU");
+  name.replace("(R)", "");
+  name.replace("(TM)", "");
+  name.trim();
+
+  const char *suffixes[] = {
+      " with Radeon Graphics",
+      " with Radeon Vega Graphics",
+      " 64-Core Processor",
+      " 32-Core Processor",
+      " 24-Core Processor",
+      " 16-Core Processor",
+      " 12-Core Processor",
+      " 10-Core Processor",
+      " 8-Core Processor",
+      " 6-Core Processor",
+      " 4-Core Processor",
+      " 2-Core Processor",
+      " Processor",
+      " CPU"};
+  for (const char *suffix : suffixes)
+    stripSuffix(name, suffix);
+
+  name.trim();
+  if (!name.length())
+    name = "CPU";
+  strlcpy(out, name.c_str(), outSize);
+}
+
+void shortGpuName(const char *raw, char *out, size_t outSize)
+{
+  String name((raw && raw[0]) ? raw : "GPU");
+  name.replace("(R)", "");
+  name.replace("(TM)", "");
+  name.trim();
+
+  if (name.startsWith("AMD Radeon RX "))
   {
-    JsonObject obj = node.as<JsonObject>();
-    if (obj["SensorId"].as<String>() == targetSensorId && !obj["Value"].isNull())
+    name = "RX " + name.substring(14);
+  }
+  else if (name.startsWith("AMD Radeon "))
+  {
+    String rest = name.substring(11);
+    name = (rest == "Graphics") ? "Radeon Graphics" : rest;
+  }
+  else if (name.startsWith("AMD "))
+  {
+    name.remove(0, 4);
+  }
+  else if (name.startsWith("NVIDIA GeForce "))
+  {
+    name.remove(0, 15);
+  }
+  else if (name.startsWith("NVIDIA "))
+  {
+    name.remove(0, 7);
+  }
+  else if (name.startsWith("Intel "))
+  {
+    name.remove(0, 6);
+  }
+
+  name.trim();
+  if (!name.length())
+    name = "GPU";
+  strlcpy(out, name.c_str(), outSize);
+}
+
+HardwareKind classifyHardware(const char *hardwareId)
+{
+  if (!hardwareId)
+    return HW_OTHER;
+  if (!strncmp(hardwareId, "/amdcpu", 7) ||
+      !strncmp(hardwareId, "/intelcpu", 9) ||
+      !strncmp(hardwareId, "/cpu", 4))
+    return HW_CPU;
+  if (!strncmp(hardwareId, "/gpu", 4))
+    return HW_GPU;
+  if (!strncmp(hardwareId, "/ram", 4))
+    return HW_RAM;
+  return HW_OTHER;
+}
+
+struct GpuCandidate
+{
+  char name[44] = "GPU";
+  float temp = 0.0f, hot = 0.0f, load = 0.0f;
+  float memUsed = 0.0f, memTotal = 0.0f;
+  bool hasTemp = false, hasHot = false, hasLoad = false, hasMem = false;
+  int tempScore = 0, hotScore = 0, loadScore = 0, memScore = 0;
+};
+
+struct ScanResult
+{
+  LiveData data;
+  GpuCandidate gpus[3];
+  int gpuCount = 0;
+  int cpuTempScore = 0, cpuLoadScore = 0, cpuPowerScore = 0, cpuFanScore = 0;
+  float ramAvailable = 0.0f;
+};
+
+void scanSensorNode(JsonVariant node, HardwareKind kind, int gpuIdx, ScanResult &scan)
+{
+  if (!node.is<JsonObject>())
+    return;
+  JsonObject obj = node.as<JsonObject>();
+
+  JsonVariant hwVar = obj["HardwareId"];
+  if (hwVar.is<const char *>())
+  {
+    kind = classifyHardware(hwVar.as<const char *>());
+    const char *hwText = obj["Text"] | "";
+
+    if (kind == HW_CPU)
     {
-      return obj["Value"].as<String>();
+      shortCpuName(hwText, scan.data.cpuName, sizeof(scan.data.cpuName));
     }
-    if (obj["Children"].is<JsonArray>())
+    else if (kind == HW_GPU)
     {
-      for (JsonVariant child : obj["Children"].as<JsonArray>())
+      if (scan.gpuCount < 3)
       {
-        String val = findSensorBySensorId(child, targetSensorId);
-        if (val != "")
-          return val;
+        gpuIdx = scan.gpuCount++;
+        shortGpuName(hwText, scan.gpus[gpuIdx].name, sizeof(scan.gpus[gpuIdx].name));
+      }
+      else
+      {
+        gpuIdx = -1;
       }
     }
   }
-  return "";
+
+  JsonVariant sidVar = obj["SensorId"];
+  if (sidVar.is<const char *>())
+  {
+    const char *sensorId = sidVar.as<const char *>();
+    const char *type = obj["Type"] | "";
+    const char *text = obj["Text"] | "";
+    float value = parseSensorValue(obj["Value"] | "");
+
+    if (sensorId[0])
+    {
+      if (kind == HW_CPU)
+      {
+        if (!strcmp(type, "Temperature"))
+        {
+          int score = 10;
+          if (icontains(text, "tctl") || icontains(text, "tdie"))
+            score = 100;
+          else if (icontains(text, "package"))
+            score = 90;
+          else if (icontains(text, "cpu"))
+            score = 50;
+
+          if (!scan.data.cpuHasTemp || score > scan.cpuTempScore)
+          {
+            scan.data.cpuTemp = value;
+            scan.data.cpuHasTemp = true;
+            scan.cpuTempScore = score;
+          }
+        }
+        else if (!strcmp(type, "Load"))
+        {
+          int score = icontains(text, "total") ? 100 : 10;
+          if (score > scan.cpuLoadScore)
+          {
+            scan.data.cpuLoad = value;
+            scan.cpuLoadScore = score;
+          }
+        }
+        else if (!strcmp(type, "Power"))
+        {
+          int score = icontains(text, "package") ? 100 : (icontains(text, "cpu") ? 50 : 10);
+          if (score > scan.cpuPowerScore)
+          {
+            scan.data.cpuPower = value;
+            scan.cpuPowerScore = score;
+          }
+        }
+      }
+      else if (kind == HW_GPU && gpuIdx >= 0 && gpuIdx < scan.gpuCount)
+      {
+        GpuCandidate &gpu = scan.gpus[gpuIdx];
+
+        if (!strcmp(type, "Temperature"))
+        {
+          if (icontains(text, "hot spot") || icontains(text, "hotspot") ||
+              icontains(text, "junction"))
+          {
+            int score = 100;
+            if (!gpu.hasHot || score > gpu.hotScore)
+            {
+              gpu.hot = value;
+              gpu.hasHot = true;
+              gpu.hotScore = score;
+            }
+          }
+          else
+          {
+            int score = 10;
+            if (icontains(text, "gpu core"))
+              score = 100;
+            else if (icontains(text, "core"))
+              score = 80;
+            else if (icontains(text, "edge"))
+              score = 70;
+            else if (icontains(text, "gpu"))
+              score = 60;
+
+            if (!gpu.hasTemp || score > gpu.tempScore)
+            {
+              gpu.temp = value;
+              gpu.hasTemp = true;
+              gpu.tempScore = score;
+            }
+          }
+        }
+        else if (!strcmp(type, "Load"))
+        {
+          int score = 10;
+          if (icontains(text, "gpu core"))
+            score = 100;
+          else if (icontains(text, "d3d 3d"))
+            score = 80;
+          else if (icontains(text, "core"))
+            score = 60;
+
+          if (!gpu.hasLoad || score > gpu.loadScore)
+          {
+            gpu.load = value;
+            gpu.hasLoad = true;
+            gpu.loadScore = score;
+          }
+        }
+        else if (!strcmp(type, "SmallData") || !strcmp(type, "Data"))
+        {
+          bool used = icontains(text, "used");
+          bool total = icontains(text, "total");
+          if (used || total)
+          {
+            int score = 10;
+            if (icontains(text, "gpu memory"))
+              score = 100;
+            else if (icontains(text, "d3d") && icontains(text, "dedicated"))
+              score = 90;
+            else if (icontains(text, "memory"))
+              score = 50;
+
+            if (used && (!gpu.hasMem || score > gpu.memScore))
+            {
+              gpu.memUsed = value;
+              gpu.hasMem = true;
+              gpu.memScore = score;
+            }
+            else if (total)
+            {
+              gpu.memTotal = value;
+            }
+          }
+        }
+      }
+      else if (kind == HW_RAM)
+      {
+        // LibreHardwareMonitor also exposes "Virtual Memory" sensors after the
+        // physical memory ones. Keep the physical values for the RAM card.
+        if (icontains(text, "virtual"))
+        {
+          // skip
+        }
+        else if (!strcmp(type, "Load"))
+        {
+          scan.data.ramLoad = value;
+        }
+        else if (!strcmp(type, "Data"))
+        {
+          if (icontains(text, "used"))
+            scan.data.ramUsed = value;
+          else if (icontains(text, "available") || icontains(text, "free"))
+            scan.ramAvailable = value;
+        }
+      }
+
+      // Fans are usually attached to the Super I/O chip, not the CPU node.
+      if (!strcmp(type, "Fan"))
+      {
+        int score = icontains(text, "cpu") ? 100 : (icontains(text, "fan") ? 20 : 10);
+        if (score > scan.cpuFanScore)
+        {
+          scan.data.cpuFan = (int)value;
+          scan.cpuFanScore = score;
+        }
+      }
+    }
+  }
+
+  JsonVariant childrenVar = obj["Children"];
+  if (childrenVar.is<JsonArray>())
+  {
+    for (JsonVariant child : childrenVar.as<JsonArray>())
+      scanSensorNode(child, kind, gpuIdx, scan);
+  }
+}
+
+int gpuCandidateScore(const GpuCandidate &gpu)
+{
+  int score = 0;
+  if (gpu.hasTemp)
+    score += 100;
+  if (gpu.hasHot)
+    score += 40;
+  if (gpu.hasLoad)
+    score += 10;
+  if (gpu.hasMem)
+    score += 5;
+  if (icontains(gpu.name, "rtx") || icontains(gpu.name, "gtx") ||
+      icontains(gpu.name, "rx ") || icontains(gpu.name, "arc "))
+    score += 30;
+  return score;
+}
+
+void finalizeScan(ScanResult &scan)
+{
+  scan.data.valid = true;
+
+  if (scan.data.ramUsed > 0.0f && scan.ramAvailable > 0.0f)
+  {
+    scan.data.ramTotal = scan.data.ramUsed + scan.ramAvailable;
+    scan.data.ramValid = true;
+  }
+
+  int best = -1, bestScore = -1;
+  for (int i = 0; i < scan.gpuCount; i++)
+  {
+    int score = gpuCandidateScore(scan.gpus[i]);
+    if (score > bestScore)
+    {
+      bestScore = score;
+      best = i;
+    }
+  }
+
+  if (best >= 0)
+  {
+    GpuCandidate &gpu = scan.gpus[best];
+    strlcpy(scan.data.gpuName, gpu.name, sizeof(scan.data.gpuName));
+    scan.data.gpuTemp = gpu.temp;
+    scan.data.gpuHot = gpu.hot;
+    scan.data.gpuLoad = gpu.load;
+    scan.data.gpuMemUsed = gpu.memUsed;
+    scan.data.gpuMemTotal = gpu.memTotal;
+    scan.data.gpuHasTemp = gpu.hasTemp && gpu.temp > 0.0f;
+    scan.data.gpuHasHotspot = gpu.hasHot && gpu.hot > 0.0f;
+    scan.data.gpuHasMem = gpu.hasMem && gpu.memUsed > 0.0f;
+  }
+}
+
+void commitLiveData(const LiveData &next)
+{
+  if (dataMutex)
+  {
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    liveData = next;
+    xSemaphoreGive(dataMutex);
+  }
+  else
+  {
+    liveData = next;
+  }
+}
+
+LiveData snapshotLiveData()
+{
+  LiveData copy;
+  if (dataMutex)
+  {
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    copy = liveData;
+    xSemaphoreGive(dataMutex);
+  }
+  else
+  {
+    copy = liveData;
+  }
+  return copy;
 }
 
 void pushHistory(float *arr, float val)
@@ -332,14 +774,65 @@ uint16_t getUsageColor(float pct)
   return T.tempHot;
 }
 
-void drawDegreeC(int x, int y, uint16_t color, uint16_t bgColor)
+void drawUnit(int x, int y, bool isTemperature, uint16_t color, uint16_t bgColor)
 {
   tft.setTextPadding(0);
-  tft.drawCircle(x + 3, y + 4, 3, color);
-  tft.drawCircle(x + 3, y + 4, 2, color);
   tft.setTextFont(4);
   tft.setTextColor(color, bgColor);
-  tft.drawString("C", x + 9, y);
+  tft.setTextDatum(TL_DATUM);
+  if (isTemperature)
+  {
+    tft.drawCircle(x + 3, y + 4, 3, color);
+    tft.drawCircle(x + 3, y + 4, 2, color);
+    tft.drawString("C", x + 9, y);
+  }
+  else
+  {
+    tft.drawString("%", x + 2, y);
+  }
+}
+
+String fitText(const String &text, int maxWidth, uint8_t font)
+{
+  if (maxWidth <= 0)
+    return "";
+  if (tft.textWidth(text, font) <= maxWidth)
+    return text;
+
+  String fitted = text;
+  while (fitted.length() > 0 && tft.textWidth(fitted + "..", font) > maxWidth)
+    fitted.remove(fitted.length() - 1);
+  return fitted + "..";
+}
+
+void drawRightText(const String &text, int rightX, int y, uint8_t font,
+                   uint16_t color, uint16_t bgColor)
+{
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(font);
+  tft.setTextColor(color, bgColor);
+  int width = tft.textWidth(text, font);
+  tft.drawString(text, rightX - width, y, font);
+}
+
+void drawNameText(int x, int y, int maxWidth, const char *name)
+{
+  String fitted = fitText(String(name), maxWidth, 1);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(1);
+  tft.setTextColor(T.textMuted, T.cardBg);
+  tft.drawString(fitted, x, y);
+}
+
+void drawGpuHotspot(const LiveData &data)
+{
+  uint16_t bg = (data.gpuHot >= 85.0f) ? T.tempHot : T.cardBorder;
+  tft.fillRoundRect(368, 43, 96, 18, 4, bg);
+  char text[20];
+  snprintf(text, sizeof(text), "HOT: %.1fC", data.gpuHot);
+  tft.setTextFont(1);
+  tft.setTextColor((data.gpuHot >= 85.0f) ? T.textWhite : T.gold, bg);
+  tft.drawCentreString(text, 416, 52, 1);
 }
 
 void drawTrendBadge(int x, int y, float delta, uint16_t bgColor)
@@ -380,16 +873,409 @@ void drawMiniBar(int x, int y, int w, int h, float val, float maxVal, uint16_t c
 }
 
 // =========================================================================
+//  WIFI PROFILE STORAGE & CONNECTION MANAGEMENT
+// =========================================================================
+String getServerUrl()
+{
+  String value;
+  if (configMutex)
+  {
+    xSemaphoreTake(configMutex, portMAX_DELAY);
+    value = serverUrl;
+    xSemaphoreGive(configMutex);
+  }
+  else
+  {
+    value = serverUrl;
+  }
+  return value;
+}
+
+void setServerUrl(const String &url)
+{
+  if (!url.length())
+    return;
+  if (configMutex)
+  {
+    xSemaphoreTake(configMutex, portMAX_DELAY);
+    url.toCharArray(serverUrl, sizeof(serverUrl));
+    xSemaphoreGive(configMutex);
+  }
+  else
+  {
+    url.toCharArray(serverUrl, sizeof(serverUrl));
+  }
+  prefs.putString("server_url", url);
+}
+
+void loadWifiProfiles()
+{
+  WifiProfile loaded[MAX_WIFI_PROFILES];
+  int stored = prefs.getInt("net_n", 0);
+  int kept = 0;
+
+  for (int i = 0; i < stored && i < MAX_WIFI_PROFILES; i++)
+  {
+    char key[12];
+    snprintf(key, sizeof(key), "n%ds", i);
+    String ssid = prefs.getString(key, "");
+    if (!ssid.length())
+      continue;
+    snprintf(key, sizeof(key), "n%dp", i);
+    String pass = prefs.getString(key, "");
+    snprintf(key, sizeof(key), "n%du", i);
+    String url = prefs.getString(key, "");
+
+    loaded[kept].ssid = ssid;
+    loaded[kept].pass = pass;
+    loaded[kept].url = url;
+    kept++;
+  }
+
+  wifiProfileCount = kept;
+  for (int i = 0; i < kept; i++)
+    wifiProfiles[i] = loaded[i];
+  for (int i = kept; i < MAX_WIFI_PROFILES; i++)
+    wifiProfiles[i] = WifiProfile();
+}
+
+void saveWifiProfiles()
+{
+  prefs.putInt("net_n", wifiProfileCount);
+  for (int i = 0; i < MAX_WIFI_PROFILES; i++)
+  {
+    char key[12];
+    if (i < wifiProfileCount)
+    {
+      snprintf(key, sizeof(key), "n%ds", i);
+      prefs.putString(key, wifiProfiles[i].ssid);
+      snprintf(key, sizeof(key), "n%dp", i);
+      prefs.putString(key, wifiProfiles[i].pass);
+      snprintf(key, sizeof(key), "n%du", i);
+      prefs.putString(key, wifiProfiles[i].url);
+    }
+    else
+    {
+      snprintf(key, sizeof(key), "n%ds", i);
+      prefs.remove(key);
+      snprintf(key, sizeof(key), "n%dp", i);
+      prefs.remove(key);
+      snprintf(key, sizeof(key), "n%du", i);
+      prefs.remove(key);
+    }
+  }
+}
+
+int findWifiProfile(const String &ssid)
+{
+  for (int i = 0; i < wifiProfileCount; i++)
+  {
+    if (wifiProfiles[i].ssid == ssid)
+      return i;
+  }
+  return -1;
+}
+
+int upsertWifiProfile(const String &ssid, const String &pass, const String &url)
+{
+  if (!ssid.length())
+    return -1;
+
+  int idx = findWifiProfile(ssid);
+  if (idx < 0)
+  {
+    if (wifiProfileCount < MAX_WIFI_PROFILES)
+    {
+      idx = wifiProfileCount++;
+    }
+    else
+    {
+      for (int i = 1; i < MAX_WIFI_PROFILES; i++)
+        wifiProfiles[i - 1] = wifiProfiles[i];
+      idx = MAX_WIFI_PROFILES - 1;
+    }
+  }
+
+  wifiProfiles[idx].ssid = ssid;
+  if (pass.length())
+    wifiProfiles[idx].pass = pass;
+  if (url.length())
+    wifiProfiles[idx].url = url;
+  if (!wifiProfiles[idx].url.length())
+    wifiProfiles[idx].url = getServerUrl();
+
+  saveWifiProfiles();
+  return idx;
+}
+
+void removeWifiProfile(int idx)
+{
+  if (idx < 0 || idx >= wifiProfileCount)
+    return;
+
+  for (int i = idx; i < wifiProfileCount - 1; i++)
+    wifiProfiles[i] = wifiProfiles[i + 1];
+  wifiProfiles[wifiProfileCount - 1] = WifiProfile();
+  wifiProfileCount--;
+
+  if (activeProfile == idx)
+    activeProfile = -1;
+  else if (activeProfile > idx)
+    activeProfile--;
+
+  saveWifiProfiles();
+  prefs.putInt("net_last", activeProfile);
+}
+
+void resetTelemetry()
+{
+  LiveData empty;
+  commitLiveData(empty);
+  for (int i = 0; i < HISTORY_LEN; i++)
+  {
+    cpuHistory[i] = 0.0f;
+    gpuHistory[i] = 0.0f;
+  }
+  historyCount = 0;
+  lastSuccessFetch = 0;
+  dataUpdated = true;
+}
+
+bool waitForWifi(unsigned long timeoutMs)
+{
+  unsigned long start = millis();
+  while (millis() - start < timeoutMs)
+  {
+    if (WiFi.status() == WL_CONNECTED)
+      return true;
+    delay(100);
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
+bool connectProfile(int idx, unsigned long timeoutMs)
+{
+  if (idx < 0 || idx >= wifiProfileCount)
+    return false;
+
+  WifiProfile &profile = wifiProfiles[idx];
+
+  if (WiFi.status() == WL_CONNECTED && WiFi.SSID() == profile.ssid)
+  {
+    activeProfile = idx;
+    if (profile.url.length())
+      setServerUrl(profile.url);
+    prefs.putInt("net_last", idx);
+    return true;
+  }
+
+  networkBusy = true;
+  WiFi.disconnect(false, false);
+  delay(120);
+  WiFi.begin(profile.ssid.c_str(), profile.pass.c_str());
+
+  bool connected = waitForWifi(timeoutMs);
+  if (connected)
+  {
+    activeProfile = idx;
+    if (profile.url.length())
+      setServerUrl(profile.url);
+    prefs.putInt("net_last", idx);
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    resetTelemetry();
+  }
+  else
+  {
+    WiFi.disconnect(false, false);
+  }
+
+  networkBusy = false;
+  return connected;
+}
+
+bool connectToAnySavedNetwork()
+{
+  if (wifiProfileCount == 0)
+    return false;
+
+  int last = prefs.getInt("net_last", -1);
+  if (last >= 0 && last < wifiProfileCount && connectProfile(last, 8000))
+    return true;
+
+  int found = WiFi.scanNetworks();
+  bool tried[MAX_WIFI_PROFILES] = {false};
+
+  if (found > 0)
+  {
+    for (int attempt = 0; attempt < wifiProfileCount; attempt++)
+    {
+      int best = -1;
+      int bestRssi = -999;
+
+      for (int i = 0; i < wifiProfileCount; i++)
+      {
+        if (tried[i])
+          continue;
+        for (int s = 0; s < found; s++)
+        {
+          if (WiFi.SSID(s) == wifiProfiles[i].ssid && WiFi.RSSI(s) > bestRssi)
+          {
+            bestRssi = WiFi.RSSI(s);
+            best = i;
+          }
+        }
+      }
+
+      if (best < 0)
+        break;
+      tried[best] = true;
+      if (connectProfile(best, 8000))
+      {
+        WiFi.scanDelete();
+        return true;
+      }
+    }
+  }
+  WiFi.scanDelete();
+
+  // Hidden networks do not show up in a scan, so try the rest as a fallback.
+  for (int i = 0; i < wifiProfileCount; i++)
+  {
+    if (tried[i])
+      continue;
+    if (connectProfile(i, 8000))
+      return true;
+  }
+  return false;
+}
+
+void drawPortalScreen(const char *subtitle)
+{
+  tft.fillScreen(T.bg);
+  tft.drawRoundRect(20, 20, 440, 280, 12, T.cardBorder);
+
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.setTextColor(T.accent1, T.bg);
+  tft.drawString("WIFI SETUP PORTAL", 240, 50);
+
+  tft.setTextFont(2);
+  tft.setTextColor(T.textWhite, T.bg);
+  tft.drawString(subtitle, 240, 90);
+  tft.drawString("Connect to this access point:", 240, 125);
+
+  tft.fillRoundRect(60, 148, 360, 36, 6, T.headerBg);
+  tft.drawRoundRect(60, 148, 360, 36, 6, T.gold);
+  tft.setTextFont(4);
+  tft.setTextColor(T.gold, T.headerBg);
+  tft.drawString(WIFI_AP_SSID, 240, 166);
+
+  tft.setTextFont(2);
+  tft.setTextColor(T.textMuted, T.bg);
+  tft.drawString(String("Password: ") + WIFI_AP_PASS, 240, 205);
+  tft.drawString("Open 192.168.4.1 to add / change", 240, 235);
+  tft.drawString("a network and its JSON data URL", 240, 255);
+  tft.setTextDatum(TL_DATUM);
+}
+
+bool startConfigPortal()
+{
+  networkBusy = true;
+  drawPortalScreen("Starting configuration portal...");
+
+  WiFiManager wm;
+  String currentUrl = getServerUrl();
+  WiFiManagerParameter urlParam("server_url", "LibreHardware JSON URL", currentUrl.c_str(), 128);
+  wm.addParameter(&urlParam);
+  wm.setConfigPortalTimeout(240);
+
+  bool connected = wm.startConfigPortal(WIFI_AP_SSID, WIFI_AP_PASS);
+
+  if (connected)
+  {
+    String ssid = wm.getWiFiSSID();
+    String pass = wm.getWiFiPass();
+    String url = urlParam.getValue();
+    url.trim();
+
+    if (!ssid.length() && WiFi.status() == WL_CONNECTED)
+      ssid = WiFi.SSID();
+    if (!pass.length() && WiFi.status() == WL_CONNECTED && WiFi.SSID() == ssid)
+      pass = WiFi.psk();
+    if (!url.length())
+      url = currentUrl;
+
+    if (ssid.length())
+    {
+      int idx = upsertWifiProfile(ssid, pass, url);
+      if (idx >= 0)
+      {
+        activeProfile = idx;
+        prefs.putInt("net_last", idx);
+        setServerUrl(url);
+        resetTelemetry();
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      }
+    }
+  }
+  else
+  {
+    WiFi.mode(WIFI_STA);
+    if (activeProfile >= 0 && activeProfile < wifiProfileCount)
+      connectProfile(activeProfile, 8000);
+  }
+
+  networkBusy = false;
+  return connected;
+}
+
+void setupWiFi()
+{
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  loadWifiProfiles();
+
+  String storedUrl = prefs.getString("server_url", serverUrl);
+  setServerUrl(storedUrl);
+
+  // Migrate the single credential set used by older firmware versions.
+  if (wifiProfileCount == 0)
+  {
+    WiFi.begin();
+    if (waitForWifi(8000) && WiFi.SSID().length())
+    {
+      int idx = upsertWifiProfile(WiFi.SSID(), WiFi.psk(), storedUrl);
+      activeProfile = idx;
+      prefs.putInt("net_last", idx);
+    }
+  }
+
+  if (WiFi.status() != WL_CONNECTED && !connectToAnySavedNetwork())
+  {
+    if (!startConfigPortal())
+    {
+      Serial.println("Portal timeout, restarting...");
+      delay(2000);
+      ESP.restart();
+    }
+  }
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+// =========================================================================
 //  HTTP BACKGROUND FETCH TASK (CORE 0)
 // =========================================================================
 void httpFetchTask(void *pvParameters)
 {
   for (;;)
   {
-    if (currentPage == 0 && monitorSubPage == 0 && WiFi.status() == WL_CONNECTED)
+    if (!networkBusy && currentPage == 0 && monitorSubPage == 0 &&
+        WiFi.status() == WL_CONNECTED)
     {
+      String url = getServerUrl();
       HTTPClient http;
-      http.begin(serverUrl);
+      http.begin(url);
       http.setTimeout(2000);
 
       int httpCode = http.GET();
@@ -400,30 +1286,21 @@ void httpFetchTask(void *pvParameters)
 
         if (!error)
         {
-          currentCpuTemp = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), CPU_TEMP_ID));
-          currentCpuLoad = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), CPU_LOAD_ID));
-          currentCpuPower = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), CPU_POWER_ID));
-          currentCpuFan = (int)parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), CPU_FAN_ID));
-
-          currentGpuCore = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), GPU_CORE_ID));
-          currentGpuHot = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), GPU_HOTSPOT_ID));
-          currentGpuLoad = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), GPU_LOAD_ID));
-          currentGpuVram = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), GPU_VRAM_ID));
-
-          currentRamLoad = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), RAM_LOAD_ID));
-          currentRamUsed = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), RAM_USED_ID));
-          float ramAvail = parseFloatValue(findSensorBySensorId(doc.as<JsonVariant>(), RAM_AVAIL_ID));
-          if (currentRamUsed > 0.0 && ramAvail > 0.0)
-            currentRamTotal = currentRamUsed + ramAvail;
+          ScanResult scan;
+          scanSensorNode(doc.as<JsonVariant>(), HW_OTHER, -1, scan);
+          finalizeScan(scan);
 
           static unsigned long lastHistoryPush = 0;
           if (millis() - lastHistoryPush >= 1000)
           {
             lastHistoryPush = millis();
-            pushHistory(cpuHistory, currentCpuTemp);
-            pushHistory(gpuHistory, currentGpuCore);
+            float cpuMetric = scan.data.cpuHasTemp ? scan.data.cpuTemp : scan.data.cpuLoad;
+            float gpuMetric = scan.data.gpuHasTemp ? scan.data.gpuTemp : scan.data.gpuLoad;
+            pushHistory(cpuHistory, cpuMetric);
+            pushHistory(gpuHistory, gpuMetric);
           }
 
+          commitLiveData(scan.data);
           lastSuccessFetch = millis();
           dataUpdated = true;
         }
@@ -449,28 +1326,35 @@ void drawHeaderTabs()
   const char *tabNames[4] = {"MONITOR", "CLOCK", "ANIMATION", "SETTINGS"};
   uint16_t tabAccents[4] = {T.accent1, T.accent2, T.tempCool, T.gold};
 
+  const int tabX0 = 2;
+  const int tabY = 4;
+  const int tabW = 92;
+  const int tabH = 26;
+  const int tabGap = 2;
+
   for (int i = 0; i < TOTAL_PAGES; i++)
   {
-    int tx = i * 95, ty = 4, tw = 95, th = 28;
+    int tx = tabX0 + i * (tabW + tabGap);
+
     if (i == currentPage)
     {
-      tft.fillRect(tx, ty, tw, th + 2, T.cardBg);
-      tft.drawRect(tx, ty, tw, th + 2, T.cardBorder);
-      tft.fillRect(tx + 1, ty, tw - 2, 3, tabAccents[i]);
-      tft.drawFastHLine(tx + 1, 32, tw - 2, T.cardBg);
+      tft.fillRect(tx, tabY, tabW, 28, T.cardBg);
+      tft.drawRect(tx, tabY, tabW, 28, T.cardBorder);
+      tft.fillRect(tx + 1, tabY, tabW - 2, 3, tabAccents[i]);
+      tft.drawFastHLine(tx + 1, 32, tabW - 2, T.cardBg);
 
       tft.setTextFont(2);
       tft.setTextColor(T.textWhite, T.cardBg);
-      tft.drawCentreString(tabNames[i], tx + tw / 2, ty + 6, 2);
+      tft.drawCentreString(tabNames[i], tx + tabW / 2, tabY + 14, 2);
     }
     else
     {
-      tft.fillRect(tx, ty + 3, tw, th - 3, T.headerBg);
-      tft.drawRect(tx, ty + 3, tw, th - 3, T.cardBorder);
+      tft.fillRect(tx, tabY, tabW, tabH, T.headerBg);
+      tft.drawRect(tx, tabY, tabW, tabH, T.cardBorder);
 
       tft.setTextFont(2);
       tft.setTextColor(T.textMuted, T.headerBg);
-      tft.drawCentreString(tabNames[i], tx + tw / 2, ty + 7, 2);
+      tft.drawCentreString(tabNames[i], tx + tabW / 2, tabY + tabH / 2, 2);
     }
   }
   updateHeaderWifi();
@@ -478,7 +1362,7 @@ void drawHeaderTabs()
 
 void updateHeaderWifi()
 {
-  int x = 390, y = 10;
+  int x = 383, y = 9;
   long rssi = WiFi.RSSI();
   bool connected = (WiFi.status() == WL_CONNECTED);
 
@@ -512,7 +1396,8 @@ void updateHeaderWifi()
     tft.print("N/A");
 }
 
-void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lineColor)
+void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lineColor,
+                        const char *unit, float minClamp, float maxClamp)
 {
   if (!graphSprite.created())
     return;
@@ -523,6 +1408,7 @@ void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lin
 
   if (historyCount < 2)
   {
+    graphSprite.setTextDatum(TL_DATUM);
     graphSprite.setTextFont(1);
     graphSprite.setTextColor(T.textMuted, T.cardBg);
     graphSprite.drawString("Collecting samples...", 30, h / 2 - 4);
@@ -530,10 +1416,10 @@ void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lin
     return;
   }
 
-  float minVal = 120.0, maxVal = -10.0;
+  float minVal = 9999.0f, maxVal = -9999.0f;
   for (int i = 0; i < HISTORY_LEN; i++)
   {
-    if (history[i] > 0.0)
+    if (history[i] > 0.0f)
     {
       if (history[i] < minVal)
         minVal = history[i];
@@ -541,18 +1427,33 @@ void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lin
         maxVal = history[i];
     }
   }
-  if (maxVal - minVal < 8.0)
+
+  if (maxVal < 0.0f)
   {
-    maxVal += 4.0;
-    minVal -= 4.0;
+    graphSprite.setTextDatum(TL_DATUM);
+    graphSprite.setTextFont(1);
+    graphSprite.setTextColor(T.textMuted, T.cardBg);
+    graphSprite.drawString("Collecting samples...", 30, h / 2 - 4);
+    graphSprite.pushSprite(x, y);
+    return;
   }
+
+  if (maxVal - minVal < 8.0f)
+  {
+    maxVal += 4.0f;
+    minVal -= 4.0f;
+  }
+  minVal = max(minVal, minClamp);
+  maxVal = min(maxVal, maxClamp);
+  if (maxVal - minVal < 1.0f)
+    maxVal = minVal + 1.0f;
 
   int prevPx = -1, prevPy = -1;
   float stepX = (float)(w - 4) / (float)(HISTORY_LEN - 1);
 
   for (int i = 0; i < HISTORY_LEN; i++)
   {
-    if (history[i] <= 0.0)
+    if (history[i] <= 0.0f)
       continue;
     int px = 2 + (int)(i * stepX);
     float norm = constrain((history[i] - minVal) / (maxVal - minVal), 0.0f, 1.0f);
@@ -567,30 +1468,29 @@ void drawSparklineGraph(int x, int y, int w, int h, float *history, uint16_t lin
     prevPy = py;
   }
 
+  graphSprite.setTextDatum(TL_DATUM);
   graphSprite.setTextFont(1);
   graphSprite.setTextColor(T.textMuted, T.cardBg);
-  graphSprite.setCursor(4, 3);
-  graphSprite.printf("%.0fC", maxVal);
-  graphSprite.setCursor(4, h - 10);
-  graphSprite.printf("%.0fC", minVal);
+  graphSprite.drawString(String((int)(maxVal + 0.5f)) + unit, 4, 3);
+  graphSprite.drawString(String((int)(minVal + 0.5f)) + unit, 4, h - 10);
   graphSprite.pushSprite(x, y);
 }
 
 void drawMonitorPage()
 {
+  tft.setTextDatum(TL_DATUM);
   tft.fillRect(0, 32, 480, 288, T.bg);
+  LiveData data = snapshotLiveData();
 
-  if (monitorSubPage == 0) {
-    // SUBPAGE 0: HARDWARE MONITOR (CPU/GPU/RAM)
+  if (monitorSubPage == 0)
+  {
+    // ---- CPU / GPU cards -------------------------------------------------
     tft.fillRoundRect(8, 36, 228, 210, 8, T.cardBg);
     tft.drawRoundRect(8, 36, 228, 210, 8, T.cardBorder);
     tft.fillRoundRect(16, 43, 38, 18, 4, T.accent1);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent1);
     tft.drawString("CPU", 22, 44);
-    tft.setTextFont(1);
-    tft.setTextColor(T.textMuted, T.cardBg);
-    tft.drawString("AMD RYZEN 5 5600", 60, 48);
 
     tft.fillRoundRect(244, 36, 228, 210, 8, T.cardBg);
     tft.drawRoundRect(244, 36, 228, 210, 8, T.cardBorder);
@@ -598,224 +1498,334 @@ void drawMonitorPage()
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent2);
     tft.drawString("GPU", 258, 44);
+
+    tft.fillRect(60, 48, 162, 9, T.cardBg);
+    drawNameText(60, 48, 162, data.cpuName);
+
+    int gpuNameMax = (data.gpuHasHotspot ? 368 : 464) - 296 - 6;
+    tft.fillRect(296, 48, 168, 9, T.cardBg);
+    drawNameText(296, 48, gpuNameMax, data.gpuName);
+    if (data.gpuHasHotspot)
+      drawGpuHotspot(data);
+
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.cardBg);
-    tft.drawString("RX 6700 XT", 296, 48);
+    tft.drawString("LOAD", 16, 117);
+    tft.drawString("LOAD", 252, 117);
 
+    // ---- RAM card --------------------------------------------------------
     tft.fillRoundRect(8, 251, 464, 64, 8, T.cardBg);
     tft.drawRoundRect(8, 251, 464, 64, 8, T.cardBorder);
     tft.fillRoundRect(16, 257, 44, 16, 4, T.accent3);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent3);
-    tft.drawString("RAM", 25, 257);
+    tft.drawString("RAM", 26, 258);
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.cardBg);
     tft.drawString("SYSTEM MEMORY", 68, 260);
 
-    tft.setCursor(16, 299);
-    tft.print("ENDPOINT: ");
-    tft.print(serverUrl);
-
+    // ---- footer ----------------------------------------------------------
     tft.fillRoundRect(320, 292, 144, 20, 4, T.accent2);
-    tft.setTextFont(2); tft.setTextColor(T.bg, T.accent2);
-    tft.drawCentreString("WIFI DIAG >", 392, 294, 2);
-
-  } else {
-    // SUBPAGE 1: WIFI DIAGNOSTIC HUB (TEKS STATIS HANYA DIGAMBAR ONCE)
-    tft.fillRoundRect(8, 36, 464, 274, 8, T.cardBg);
-    tft.drawRoundRect(8, 36, 464, 274, 8, T.cardBorder);
+    tft.setTextFont(2);
+    tft.setTextColor(T.bg, T.accent2);
+    tft.drawCentreString("WIFI DIAG >", 392, 302, 2);
+  }
+  else
+  {
+    // ---- Wi-Fi diagnostics ----------------------------------------------
+    tft.fillRoundRect(8, 36, 464, 279, 8, T.cardBg);
+    tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
 
     tft.fillRoundRect(16, 44, 150, 22, 4, T.accent1);
-    tft.setTextFont(2); tft.setTextColor(T.bg, T.accent1);
+    tft.setTextFont(2);
+    tft.setTextColor(T.bg, T.accent1);
     tft.drawString("WIFI DIAGNOSTICS", 22, 46);
+    tft.drawFastHLine(16, 74, 448, T.cardBorder);
 
-    tft.drawFastHLine(16, 72, 448, T.cardBorder);
+    tft.fillRect(16, 82, 220, 100, T.headerBg);
+    tft.drawRoundRect(16, 82, 220, 100, 6, T.cardBorder);
+    tft.setTextFont(2);
+    tft.setTextColor(T.gold, T.headerBg);
+    tft.drawString("LINK QUALITY", 26, 89);
 
-    // Card 1 Static: Link Quality
-    tft.fillRect(16, 78, 220, 100, T.headerBg);
-    tft.drawRoundRect(16, 78, 220, 100, 6, T.cardBorder);
-    tft.setTextFont(2); tft.setTextColor(T.gold, T.headerBg);
-    tft.drawString("LINK QUALITY", 26, 85);
+    tft.fillRect(244, 82, 220, 100, T.headerBg);
+    tft.drawRoundRect(244, 82, 220, 100, 6, T.cardBorder);
+    tft.setTextFont(2);
+    tft.setTextColor(T.gold, T.headerBg);
+    tft.drawString("LATENCY (PING)", 254, 89);
 
-    // Card 2 Static: Latency & Ping
-    tft.fillRect(244, 78, 220, 100, T.headerBg);
-    tft.drawRoundRect(244, 78, 220, 100, 6, T.cardBorder);
-    tft.setTextFont(2); tft.setTextColor(T.gold, T.headerBg);
-    tft.drawString("LATENCY (PING)", 254, 85);
+    tft.fillRect(16, 190, 448, 92, T.headerBg);
+    tft.drawRoundRect(16, 190, 448, 92, 6, T.cardBorder);
+    tft.setTextFont(2);
+    tft.setTextColor(T.accent3, T.headerBg);
+    tft.drawString("NETWORK CONFIGURATION", 26, 197);
 
-    // Card 3 Static: Network Identity (Teks Statis DIGAMBAR SEKALI DI SINI)
-    tft.fillRect(16, 186, 448, 95, T.headerBg);
-    tft.drawRoundRect(16, 186, 448, 95, 6, T.cardBorder);
-    tft.setTextFont(2); tft.setTextColor(T.accent3, T.headerBg);
-    tft.drawString("NETWORK CONFIGURATION", 26, 193);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.headerBg);
+    tft.setCursor(26, 222);
+    tft.printf("LOCAL IP   : %s", WiFi.localIP().toString().c_str());
+    tft.setCursor(26, 240);
+    tft.printf("GATEWAY IP : %s", WiFi.gatewayIP().toString().c_str());
+    tft.setCursor(26, 258);
+    tft.printf("SUBNET MASK: %s", WiFi.subnetMask().toString().c_str());
 
-    tft.setTextFont(1); tft.setTextColor(T.textMuted, T.headerBg);
-    tft.setCursor(26, 218); tft.printf("LOCAL IP    : %s", WiFi.localIP().toString().c_str());
-    tft.setCursor(26, 236); tft.printf("GATEWAY IP  : %s", WiFi.gatewayIP().toString().c_str());
-    tft.setCursor(26, 254); tft.printf("SUBNET MASK : %s", WiFi.subnetMask().toString().c_str());
+    tft.setCursor(244, 222);
+    tft.printf("MAC ADDRESS: %s", WiFi.macAddress().c_str());
+    tft.setCursor(244, 240);
+    tft.printf("DNS SERVER : %s", WiFi.dnsIP().toString().c_str());
+    tft.setCursor(244, 258);
+    String ssid = WiFi.SSID();
+    if (ssid.length() > 18)
+      ssid = ssid.substring(0, 18);
+    tft.printf("SSID       : %s", ssid.c_str());
 
-    tft.setCursor(260, 218); tft.printf("MAC ADDRESS : %s", WiFi.macAddress().c_str());
-    tft.setCursor(260, 236); tft.printf("DNS SERVER  : %s", WiFi.dnsIP().toString().c_str());
-
-    // Footer Info & Tombol Switch
-    tft.setTextFont(1); tft.setTextColor(T.textMuted, T.cardBg);
-    tft.drawString("TAP PING CARD TO SWITCH TARGET", 16, 297);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.cardBg);
+    tft.drawString("TAP PING CARD TO SWITCH TARGET", 16, 296);
 
     tft.fillRoundRect(320, 292, 144, 20, 4, T.accent1);
-    tft.setTextFont(2); tft.setTextColor(T.bg, T.accent1);
-    tft.drawCentreString("< HARDWARE", 392, 294, 2);
+    tft.setTextFont(2);
+    tft.setTextColor(T.bg, T.accent1);
+    tft.drawCentreString("< HARDWARE", 392, 302, 2);
   }
 }
 
 void updateMonitorData()
 {
-  if (monitorSubPage == 0) {
-    // CPU CARD
-    uint16_t cpuColor = getTempColor(currentCpuTemp);
-    char cpuBuff[16];
-    if (currentCpuTemp > 0.0)
-      snprintf(cpuBuff, sizeof(cpuBuff), "%.1f", currentCpuTemp);
-    else
-      snprintf(cpuBuff, sizeof(cpuBuff), "--.-");
+  tft.setTextDatum(TL_DATUM);
+  LiveData data = snapshotLiveData();
 
-    int numWidth = tft.textWidth(cpuBuff, 6);
-    tft.fillRect(16, 65, 126, 46, T.cardBg);
+  if (monitorSubPage == 0)
+  {
+    static char lastCpuName[44] = "";
+    static char lastGpuName[44] = "";
+    static bool lastHotspot = false;
+
+    bool hotspot = data.gpuHasHotspot;
+    bool namesChanged = strcmp(lastCpuName, data.cpuName) != 0 ||
+                        strcmp(lastGpuName, data.gpuName) != 0 ||
+                        hotspot != lastHotspot;
+
+    if (namesChanged)
+    {
+      tft.fillRect(60, 48, 162, 9, T.cardBg);
+      drawNameText(60, 48, 162, data.cpuName);
+
+      tft.fillRect(296, 48, 168, 9, T.cardBg);
+      int gpuNameMax = (hotspot ? 368 : 464) - 296 - 6;
+      drawNameText(296, 48, gpuNameMax, data.gpuName);
+
+      if (!hotspot)
+        tft.fillRect(368, 43, 96, 18, T.cardBg);
+
+      strlcpy(lastCpuName, data.cpuName, sizeof(lastCpuName));
+      strlcpy(lastGpuName, data.gpuName, sizeof(lastGpuName));
+      lastHotspot = hotspot;
+    }
+
+    if (hotspot)
+      drawGpuHotspot(data);
+
+    // ---- CPU -------------------------------------------------------------
+    bool cpuTempOk = data.valid && data.cpuHasTemp && data.cpuTemp > 0.0f;
+    float cpuMetric = cpuTempOk ? data.cpuTemp : data.cpuLoad;
+    uint16_t cpuColor = !data.valid ? T.textMuted
+                                    : (cpuTempOk ? getTempColor(data.cpuTemp)
+                                                 : getUsageColor(data.cpuLoad));
+
+    char cpuBuff[16];
+    if (!data.valid)
+      snprintf(cpuBuff, sizeof(cpuBuff), "--.-");
+    else if (cpuMetric >= 100.0f)
+      snprintf(cpuBuff, sizeof(cpuBuff), "%.0f", cpuMetric);
+    else
+      snprintf(cpuBuff, sizeof(cpuBuff), "%.1f", cpuMetric);
+
+    int cpuNumWidth = tft.textWidth(cpuBuff, 6);
+    tft.fillRect(16, 65, 130, 46, T.cardBg);
     tft.setTextFont(6);
     tft.setTextColor(cpuColor, T.cardBg);
     tft.drawString(cpuBuff, 16, 65);
+    if (data.valid)
+      drawUnit(16 + cpuNumWidth + 3, 71, cpuTempOk, T.textMuted, T.cardBg);
 
-    drawDegreeC(16 + numWidth + 3, 71, T.textMuted, T.cardBg);
     drawTrendBadge(148, 75, getTrendDelta(cpuHistory), T.cardBg);
 
+    tft.fillRect(106, 117, 38, 9, T.cardBg);
+    tft.fillRect(146, 117, 82, 9, T.cardBg);
+    drawMiniBar(46, 119, 54, 6, data.cpuLoad, 100.0f, getUsageColor(data.cpuLoad));
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.cardBg);
-    tft.setCursor(16, 117);
-    tft.printf("LOAD: %.1f%%", currentCpuLoad);
-    drawMiniBar(80, 119, 60, 6, currentCpuLoad, 100.0, getUsageColor(currentCpuLoad));
-
-    tft.setCursor(150, 117);
-    if (currentCpuFan > 0)
-      tft.printf("%d RPM", currentCpuFan);
-    else if (currentCpuPower > 0.0)
-      tft.printf("%.0f W", currentCpuPower);
+    if (data.valid)
+      snprintf(cpuBuff, sizeof(cpuBuff), "%.1f%%", data.cpuLoad);
     else
-      tft.print("-- W");
+      snprintf(cpuBuff, sizeof(cpuBuff), "--.-%%");
+    tft.drawString(cpuBuff, 106, 117);
 
-    drawSparklineGraph(16, 133, 212, 104, cpuHistory, T.accent1);
+    char cpuExtra[20];
+    if (!data.valid)
+      snprintf(cpuExtra, sizeof(cpuExtra), "--");
+    else if (data.cpuFan > 0)
+      snprintf(cpuExtra, sizeof(cpuExtra), "%d RPM", data.cpuFan);
+    else if (data.cpuPower > 0.0f)
+      snprintf(cpuExtra, sizeof(cpuExtra), "%.0f W", data.cpuPower);
+    else if (!cpuTempOk)
+      snprintf(cpuExtra, sizeof(cpuExtra), "TEMP N/A");
+    else
+      snprintf(cpuExtra, sizeof(cpuExtra), "-- W");
+    drawRightText(cpuExtra, 228, 117, 1, T.textMuted, T.cardBg);
 
-    // GPU CARD
-    uint16_t gpuColor = getTempColor(currentGpuCore);
+    drawSparklineGraph(16, 133, 212, 104, cpuHistory, T.accent1,
+                       cpuTempOk ? "C" : "%", cpuTempOk ? 20.0f : 0.0f,
+                       cpuTempOk ? 110.0f : 100.0f);
+
+    // ---- GPU -------------------------------------------------------------
+    bool gpuTempOk = data.valid && data.gpuHasTemp && data.gpuTemp > 0.0f;
+    float gpuMetric = gpuTempOk ? data.gpuTemp : data.gpuLoad;
+    uint16_t gpuColor = !data.valid ? T.textMuted
+                                    : (gpuTempOk ? getTempColor(data.gpuTemp)
+                                                 : getUsageColor(data.gpuLoad));
+
     char gpuBuff[16];
-    if (currentGpuCore > 0.0)
-      snprintf(gpuBuff, sizeof(gpuBuff), "%.1f", currentGpuCore);
-    else
+    if (!data.valid)
       snprintf(gpuBuff, sizeof(gpuBuff), "--.-");
+    else if (gpuMetric >= 100.0f)
+      snprintf(gpuBuff, sizeof(gpuBuff), "%.0f", gpuMetric);
+    else
+      snprintf(gpuBuff, sizeof(gpuBuff), "%.1f", gpuMetric);
 
     int gpuNumWidth = tft.textWidth(gpuBuff, 6);
-    tft.fillRect(252, 65, 126, 46, T.cardBg);
+    tft.fillRect(252, 65, 130, 46, T.cardBg);
     tft.setTextFont(6);
     tft.setTextColor(gpuColor, T.cardBg);
     tft.drawString(gpuBuff, 252, 65);
+    if (data.valid)
+      drawUnit(252 + gpuNumWidth + 3, 71, gpuTempOk, T.textMuted, T.cardBg);
 
-    drawDegreeC(252 + gpuNumWidth + 3, 71, T.textMuted, T.cardBg);
+    drawTrendBadge(388, 75, getTrendDelta(gpuHistory), T.cardBg);
 
-    uint16_t hsBg = (currentGpuHot >= 85.0) ? T.tempHot : T.cardBorder;
-    tft.fillRoundRect(368, 43, 96, 18, 4, hsBg);
-    tft.setTextFont(1);
-    tft.setTextColor((currentGpuHot >= 85.0) ? T.textWhite : T.gold, hsBg);
-    tft.setCursor(374, 48);
-    if (currentGpuHot > 0.0)
-      tft.printf("HOT: %.1fC", currentGpuHot);
-    else
-      tft.print("HOT: --.-C");
-
-    drawTrendBadge(384, 75, getTrendDelta(gpuHistory), T.cardBg);
-
+    tft.fillRect(342, 117, 38, 9, T.cardBg);
+    tft.fillRect(380, 117, 84, 9, T.cardBg);
+    drawMiniBar(282, 119, 54, 6, data.gpuLoad, 100.0f, getUsageColor(data.gpuLoad));
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.cardBg);
-    tft.setCursor(252, 117);
-    tft.printf("LOAD: %.1f%%", currentGpuLoad);
-    drawMiniBar(316, 119, 60, 6, currentGpuLoad, 100.0, getUsageColor(currentGpuLoad));
-
-    tft.setCursor(386, 117);
-    if (currentGpuVram > 1024.0)
-      tft.printf("VRAM: %.1fGB", currentGpuVram / 1024.0);
-    else if (currentGpuVram > 0.0)
-      tft.printf("VRAM: %.0fMB", currentGpuVram);
+    if (data.valid)
+      snprintf(gpuBuff, sizeof(gpuBuff), "%.1f%%", data.gpuLoad);
     else
-      tft.print("VRAM: --");
+      snprintf(gpuBuff, sizeof(gpuBuff), "--.-%%");
+    tft.drawString(gpuBuff, 342, 117);
 
-    drawSparklineGraph(252, 133, 212, 104, gpuHistory, T.accent2);
+    char gpuExtra[20];
+    if (data.valid && data.gpuHasMem)
+    {
+      if (data.gpuMemUsed >= 1024.0f)
+        snprintf(gpuExtra, sizeof(gpuExtra), "VRAM: %.1fGB", data.gpuMemUsed / 1024.0f);
+      else
+        snprintf(gpuExtra, sizeof(gpuExtra), "VRAM: %.0fMB", data.gpuMemUsed);
+    }
+    else
+    {
+      snprintf(gpuExtra, sizeof(gpuExtra), "VRAM: --");
+    }
+    drawRightText(gpuExtra, 464, 117, 1, T.textMuted, T.cardBg);
 
-    // RAM CARD
+    drawSparklineGraph(252, 133, 212, 104, gpuHistory, T.accent2,
+                       gpuTempOk ? "C" : "%", gpuTempOk ? 20.0f : 0.0f,
+                       gpuTempOk ? 110.0f : 100.0f);
+
+    // ---- RAM -------------------------------------------------------------
+    bool ramValid = data.ramValid && data.ramUsed > 0.0f;
+    uint16_t ramColor = getUsageColor(data.ramLoad);
+
+    tft.fillRect(318, 255, 148, 20, T.cardBg);
+    char ramUsedText[32];
+    if (ramValid)
+      snprintf(ramUsedText, sizeof(ramUsedText), "%.1f / %.1f GB", data.ramUsed, data.ramTotal);
+    else
+      snprintf(ramUsedText, sizeof(ramUsedText), "N/A");
+    drawRightText(ramUsedText, 414, 260, 1, T.accent1, T.cardBg);
+
+    char ramPctText[16];
+    if (ramValid)
+      snprintf(ramPctText, sizeof(ramPctText), "%.1f%%", data.ramLoad);
+    else
+      snprintf(ramPctText, sizeof(ramPctText), "--.-%%");
+    drawRightText(ramPctText, 464, 257, 2, ramColor, T.cardBg);
+
+    drawMiniBar(16, 279, 448, 8, data.ramLoad, 100.0f, ramColor);
+
+    // ---- endpoint / stale-data indicator --------------------------------
+    bool stale = lastSuccessFetch == 0 || (millis() - lastSuccessFetch > 10000UL);
+    String endpoint = fitText(String("SOURCE: ") + getServerUrl(), 296, 1);
+    tft.fillRect(16, 299, 296, 10, T.cardBg);
     tft.setTextFont(1);
-    tft.setTextColor(T.accent1, T.cardBg);
-    tft.setCursor(180, 260);
-    if (currentRamUsed > 0.0)
-      tft.printf("%.1f GB / %.1f GB", currentRamUsed, currentRamTotal);
-    else
-      tft.print("N/A GB");
-
-    uint16_t ramColor = getUsageColor(currentRamLoad);
-    tft.setTextFont(2);
-    tft.setTextColor(ramColor, T.cardBg);
-    tft.setCursor(330, 257);
-    if (currentRamLoad > 0.0)
-      tft.printf("%.1f%%", currentRamLoad);
-    else
-      tft.print("--.-%");
-
-    tft.setTextFont(1);
-    tft.setTextColor(T.textMuted, T.cardBg);
-    tft.setCursor(396, 260);
-    if (currentCpuPower > 0.0)
-      tft.printf("PWR: %.1fW", currentCpuPower);
-
-    drawMiniBar(16, 279, 448, 8, currentRamLoad, 100.0, ramColor);
-
-  } else {
-    // 1. AMBIL DATA & LAKUKAN PING RINGAN
-    long rssi = WiFi.RSSI();
-    int signalPct = constrain(2 * (rssi + 100), 0, 100);
+    tft.setTextColor(stale ? T.tempHot : T.textMuted, T.cardBg);
+    tft.drawString(endpoint, 16, 300);
+  }
+  else
+  {
+    // ---- Wi-Fi diagnostics live values ----------------------------------
+    bool wifiUp = (WiFi.status() == WL_CONNECTED);
+    long rssi = wifiUp ? WiFi.RSSI() : 0;
+    int signalPct = wifiUp ? constrain(2 * (rssi + 100), 0, 100) : 0;
 
     long pingGw = measureLatency(WiFi.gatewayIP().toString().c_str(), 80);
-    long pingTarget = measureLatency(PING_TARGETS[currentPingTargetIdx].host, PING_TARGETS[currentPingTargetIdx].port);
+    long pingTarget = measureLatency(PING_TARGETS[currentPingTargetIdx].host,
+                                     PING_TARGETS[currentPingTargetIdx].port);
 
-    // 2. UPDATE KONTEN HANYA PADA TEKS VARIABEL BERUBAH (PEMBERSIHAN PRESISI AREA TEKS)
+    tft.fillRect(26, 108, 112, 50, T.headerBg);
+    tft.setTextFont(6);
+    tft.setTextColor(T.accent1, T.headerBg);
+    tft.setCursor(26, 112);
+    tft.printf("%d%%", signalPct);
 
-    // --- Card 1 Values ---
-    tft.fillRect(26, 110, 85, 45, T.headerBg);
-    tft.setTextFont(6); tft.setTextColor(T.accent1, T.headerBg);
-    tft.setCursor(26, 110); tft.printf("%d%%", signalPct);
+    tft.fillRect(146, 108, 76, 52, T.headerBg);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.headerBg);
+    String ssid = wifiUp ? WiFi.SSID() : String("-");
+    if (ssid.length() > 8)
+      ssid = ssid.substring(0, 8);
+    tft.setCursor(148, 112);
+    if (wifiUp)
+      tft.printf("RSSI %d", (int)rssi);
+    else
+      tft.print("RSSI --");
+    tft.setCursor(148, 130);
+    if (wifiUp)
+      tft.printf("CH   %d", WiFi.channel());
+    else
+      tft.print("CH   --");
+    tft.setCursor(148, 148);
+    tft.printf("SSID %.8s", ssid.c_str());
 
-    tft.fillRect(120, 110, 110, 55, T.headerBg);
-    tft.setTextFont(1); tft.setTextColor(T.textMuted, T.headerBg);
-    tft.setCursor(120, 112); tft.printf("RSSI: %d dBm", (int)rssi);
-    tft.setCursor(120, 130); tft.printf("CH  : %d", WiFi.channel());
-    tft.setCursor(120, 148); tft.printf("SSID: %s", WiFi.SSID().substring(0, 10).c_str());
+    tft.fillRect(254, 108, 204, 14, T.headerBg);
+    tft.setTextFont(1);
+    tft.setTextColor(T.gold, T.headerBg);
+    String target = fitText(String("TARGET: ") + PING_TARGETS[currentPingTargetIdx].name, 200, 1);
+    tft.drawString(target, 254, 110);
 
-    // --- Card 2 Values ---
-    tft.fillRect(254, 104, 204, 14, T.headerBg);
-    tft.setTextFont(1); tft.setTextColor(T.gold, T.headerBg);
-    tft.setCursor(254, 106); tft.printf("TARGET: %s", PING_TARGETS[currentPingTargetIdx].name);
+    tft.fillRect(254, 126, 204, 40, T.headerBg);
+    tft.setTextFont(2);
+    tft.setTextColor(T.textWhite, T.headerBg);
+    tft.setCursor(254, 130);
+    if (pingGw >= 0)
+      tft.printf("GATEWAY : %ld ms", pingGw);
+    else
+      tft.print("GATEWAY : TIMEOUT");
 
-    tft.fillRect(254, 122, 204, 45, T.headerBg);
-    tft.setTextFont(2); tft.setTextColor(T.textWhite, T.headerBg);
-    tft.setCursor(254, 124);
-    if (pingGw >= 0) tft.printf("GATEWAY : %ld ms", pingGw);
-    else tft.print("GATEWAY : TIMEOUT");
-
-    tft.setCursor(254, 146);
-    if (pingTarget >= 0) tft.printf("SERVER  : %ld ms", pingTarget);
-    else tft.print("SERVER  : TIMEOUT");
+    tft.setCursor(254, 150);
+    if (pingTarget >= 0)
+      tft.printf("SERVER  : %ld ms", pingTarget);
+    else
+      tft.print("SERVER  : TIMEOUT");
   }
 }
 
 void drawClockPage()
 {
   forceSubPageRefresh = true;
-  tft.fillRoundRect(8, 36, 464, 274, 8, T.cardBg);
-  tft.drawRoundRect(8, 36, 464, 274, 8, T.cardBorder);
+  tft.fillRoundRect(8, 36, 464, 279, 8, T.cardBg);
+  tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
   tft.setTextDatum(MC_DATUM);
 
   if (clockSubPage == 0)
@@ -829,10 +1839,10 @@ void drawClockPage()
     tft.setTextFont(1);
     tft.setTextColor(T.gold, T.headerBg);
     tft.drawString("NTP: GMT+7", 181, 56);
-    tft.fillRoundRect(320, 44, 144, 26, 6, T.accent2);
+    tft.fillRoundRect(320, 44, 144, 24, 4, T.accent2);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent2);
-    tft.drawString("POMODORO HUB >", 392, 57);
+    tft.drawString("POMODORO HUB >", 392, 56);
     tft.drawFastHLine(20, 78, 440, T.cardBorder);
     tft.setTextDatum(TL_DATUM);
     tft.setTextFont(1);
@@ -845,10 +1855,10 @@ void drawClockPage()
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent2);
     tft.drawString("POMODORO HUB", 76, 56);
-    tft.fillRoundRect(336, 44, 128, 26, 6, T.accent1);
+    tft.fillRoundRect(336, 44, 128, 24, 4, T.accent1);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent1);
-    tft.drawString("< CLOCK MODE", 400, 57);
+    tft.drawString("< CLOCK MODE", 400, 56);
     tft.drawFastHLine(20, 78, 440, T.cardBorder);
     tft.fillRoundRect(90, 88, 300, 60, 8, T.headerBg);
     tft.drawRoundRect(90, 88, 300, 60, 8, T.cardBorder);
@@ -972,10 +1982,10 @@ void updateClockPage(bool secondChanged)
       lastPomoSecRemaining = currentSecRemaining;
 
       uint16_t badgeBg = pomodoroFinished ? T.tempHot : (pomodoroActive ? T.accent1 : T.cardBorder);
-      tft.fillRoundRect(150, 44, 170, 24, 4, badgeBg);
+      tft.fillRoundRect(144, 44, 184, 24, 4, badgeBg);
       tft.setTextFont(2);
       tft.setTextColor(pomodoroFinished ? T.textWhite : (pomodoroActive ? T.bg : T.textMuted), badgeBg);
-      tft.drawString(pomodoroFinished ? "BREAK TIME!" : (pomodoroActive ? "FOCUSING" : "READY"), 235, 56);
+      tft.drawString(pomodoroFinished ? "BREAK TIME!" : (pomodoroActive ? "FOCUSING" : "READY"), 236, 56);
 
       char pomoStr[16];
       if (pomodoroActive || pomodoroPaused)
@@ -1182,107 +2192,242 @@ void renderAnimationFrame()
   }
 }
 
-void drawSettingsPage() {
+void showNetworkStatus(const char *title, const String &detail, uint16_t color)
+{
+  tft.fillRoundRect(40, 118, 400, 84, 10, T.headerBg);
+  tft.drawRoundRect(40, 118, 400, 84, 10, color);
+  tft.drawRoundRect(41, 119, 398, 82, 9, color);
+
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.setTextColor(color, T.headerBg);
+  tft.drawString(title, 240, 148);
+
+  tft.setTextFont(1);
+  tft.setTextColor(T.textMuted, T.headerBg);
+  tft.drawString(fitText(detail, 360, 1), 240, 180);
+  tft.setTextDatum(TL_DATUM);
+}
+
+int networkIndexAt(int x, int y)
+{
+  if (settingsTab != 0 || y < 82 || y > 254)
+    return -1;
+
+  int row = (y - 82) / 60;
+  if (row < 0 || row > 2)
+    return -1;
+  int rowY = 82 + row * 60;
+  if (y > rowY + 52)
+    return -1;
+
+  int col;
+  if (x >= 16 && x <= 236)
+    col = 0;
+  else if (x >= 244 && x <= 464)
+    col = 1;
+  else
+    return -1;
+
+  int idx = row * 2 + col;
+  return (idx < wifiProfileCount) ? idx : -1;
+}
+
+void drawNetworkSettings()
+{
+  int effectiveActive = -1;
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    String currentSsid = WiFi.SSID();
+    if (activeProfile >= 0 && activeProfile < wifiProfileCount &&
+        wifiProfiles[activeProfile].ssid == currentSsid)
+      effectiveActive = activeProfile;
+    else
+      effectiveActive = findWifiProfile(currentSsid);
+  }
+
+  if (wifiProfileCount == 0)
+  {
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextFont(4);
+    tft.setTextColor(T.textMuted, T.cardBg);
+    tft.drawString("NO SAVED NETWORKS", 240, 148);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textDark, T.cardBg);
+    tft.drawString("USE ADD / CHANGE NETWORK BELOW", 240, 178);
+    tft.setTextDatum(TL_DATUM);
+  }
+
+  for (int i = 0; i < wifiProfileCount; i++)
+  {
+    int col = i % 2;
+    int row = i / 2;
+    int sx = 16 + col * 228;
+    int sy = 82 + row * 60;
+    int sw = 220;
+    int sh = 52;
+    bool active = (i == effectiveActive);
+
+    tft.fillRoundRect(sx, sy, sw, sh, 6, T.headerBg);
+    tft.drawRoundRect(sx, sy, sw, sh, 6, active ? T.tempCool : T.cardBorder);
+    if (active)
+    {
+      tft.drawRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, 5, T.tempCool);
+      tft.fillRoundRect(sx + 8, sy + 2, sw - 16, 2, 1, T.tempCool);
+    }
+
+    tft.setTextFont(2);
+    tft.setTextColor(T.textWhite, T.headerBg);
+    tft.drawString(fitText(wifiProfiles[i].ssid, 178, 2), sx + 10, sy + 7);
+
+    String detail = wifiProfiles[i].url.length() ? wifiProfiles[i].url : String("NO SOURCE URL");
+    tft.setTextFont(1);
+    tft.setTextColor(active ? T.tempCool : T.textMuted, T.headerBg);
+    tft.drawString(fitText(detail, 178, 1), sx + 10, sy + 28);
+
+    tft.fillCircle(sx + sw - 14, sy + 14, 4, active ? T.tempCool : T.textDark);
+    if (active)
+      tft.drawCircle(sx + sw - 14, sy + 14, 6, T.tempCool);
+  }
+
+  tft.fillRoundRect(16, 262, 448, 26, 5, T.accent1);
+  tft.setTextFont(2);
+  tft.setTextColor(T.bg, T.accent1);
+  tft.drawCentreString("ADD / CHANGE NETWORK", 240, 275, 2);
+}
+
+void drawThemeSettings()
+{
+  const int contentTop = 82;
+  const int contentBottom = 290;
+
+  for (int i = 0; i < TOTAL_THEMES; i++)
+  {
+    int col = i % 2;
+    int row = i / 2;
+    int sx = 16 + col * 228;
+    int sy = 82 + row * 74 - settingsScrollY;
+    int sw = 220;
+    int sh = 66;
+
+    if (sy + sh < contentTop || sy > contentBottom)
+      continue;
+
+    const ThemePalette *th = ALL_THEMES[i];
+    bool isSelected = (i == selectedTheme);
+
+    int drawY = max(contentTop, sy);
+    int drawH = min(contentBottom, sy + sh) - drawY;
+    if (drawH <= 0)
+      continue;
+
+    tft.fillRect(sx, drawY, sw, drawH, th->cardBg);
+    uint16_t borderColor = isSelected ? T.gold : th->cardBorder;
+
+    if (sy >= contentTop && sy + sh <= contentBottom)
+    {
+      tft.drawRoundRect(sx, sy, sw, sh, 6, borderColor);
+      if (isSelected)
+      {
+        tft.drawRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, 5, T.gold);
+        tft.fillRoundRect(sx + 4, sy + 10, 3, sh - 20, 1, T.gold);
+      }
+    }
+    else
+    {
+      if (sy >= contentTop)
+        tft.drawFastHLine(sx, sy, sw, borderColor);
+      if (sy + sh <= contentBottom)
+        tft.drawFastHLine(sx, sy + sh - 1, sw, borderColor);
+      tft.drawFastVLine(sx, drawY, drawH, borderColor);
+      tft.drawFastVLine(sx + sw - 1, drawY, drawH, borderColor);
+    }
+
+    // Only draw the contents once the card is fully visible; this makes
+    // scrolling clean without clipping text.
+    if (sy < contentTop || sy + sh > contentBottom)
+      continue;
+
+    tft.setTextFont(2);
+    tft.setTextColor(isSelected ? T.gold : th->textWhite, th->cardBg);
+    tft.drawString(th->name, sx + 12, sy + 5);
+
+    uint16_t pal[15] = {th->bg, th->cardBg, th->cardBorder, th->headerBg, th->barTrack,
+                        th->textWhite, th->textMuted, th->textDark, th->tempCool,
+                        th->tempWarm, th->tempHot, th->accent1, th->accent2,
+                        th->accent3, th->gold};
+    for (int c = 0; c < 15; c++)
+    {
+      tft.fillRect(sx + 13 + c * 13, sy + 28, 12, 12, pal[c]);
+      tft.drawRect(sx + 13 + c * 13, sy + 28, 12, 12, th->cardBorder);
+    }
+
+    tft.fillRect(sx + 12, sy + 44, 196, 14, th->headerBg);
+    tft.drawRect(sx + 12, sy + 44, 196, 14, th->cardBorder);
+    tft.setTextFont(1);
+    tft.setTextColor(th->textMuted, th->headerBg);
+    tft.drawString("BG CARD TXT STATUS ACC", sx + 16, sy + 47);
+  }
+
+  tft.fillRect(465, 82, 6, 208, T.headerBg);
+  int barH = max(28, 208 * 208 / (8 * 74));
+  int barY = 82 + (settingsScrollY * (208 - barH)) / max(1, MAX_SETTINGS_SCROLL);
+  tft.fillRoundRect(465, barY, 6, barH, 2, T.gold);
+}
+
+void drawSettingsPage()
+{
+  tft.setTextDatum(TL_DATUM);
   tft.fillRoundRect(8, 36, 464, 279, 8, T.cardBg);
 
-  tft.fillRect(16, 37, 448, 26, T.headerBg);
-  tft.fillRect(16, 297, 448, 17, T.headerBg);
+  const int tabY = 44;
+  const int tabW = 220;
+  const int tabH = 24;
+  const int tabX[2] = {16, 244};
 
-  tft.drawFastHLine(8, 63, 464, T.cardBorder);
-  tft.drawFastHLine(8, 296, 464, T.cardBorder);
+  for (int i = 0; i < 2; i++)
+  {
+    bool active = (settingsTab == i);
+    uint16_t accent = (i == 0) ? T.accent3 : T.gold;
 
-  tft.setTextFont(2); 
-  tft.setTextColor(T.accent1, T.headerBg);
-  tft.drawCentreString("THEME SETTINGS (15 THEMES)", 240, 42, 2);
+    if (active)
+    {
+      tft.fillRoundRect(tabX[i], tabY, tabW, tabH, 4, accent);
+      tft.setTextColor(T.bg, accent);
+    }
+    else
+    {
+      tft.fillRoundRect(tabX[i], tabY, tabW, tabH, 4, T.headerBg);
+      tft.drawRoundRect(tabX[i], tabY, tabW, tabH, 4, T.cardBorder);
+      tft.setTextColor(T.textMuted, T.headerBg);
+    }
 
-  tft.setTextFont(1); 
-  tft.setTextColor(T.textMuted, T.headerBg);
-  tft.drawCentreString("SWIPE UP/DOWN TO SCROLL  |  TAP A THEME TO APPLY", 240, 301, 1);
+    tft.setTextFont(2);
+    tft.drawCentreString(i == 0 ? "NETWORKS" : "THEMES",
+                         tabX[i] + tabW / 2, tabY + tabH / 2, 2);
+  }
+
+  tft.drawFastHLine(16, 78, 448, T.cardBorder);
+  tft.drawFastHLine(16, 292, 448, T.cardBorder);
+
+  tft.setTextFont(1);
+  tft.setTextColor(T.textMuted, T.cardBg);
+  if (settingsTab == 0)
+    tft.drawCentreString("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
+  else
+    tft.drawCentreString("SWIPE UP/DOWN TO SCROLL  |  TAP A THEME TO APPLY", 240, 300, 1);
 
   tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
-
   drawSettingsContent();
 }
 
 void drawSettingsContent()
 {
-  tft.fillRect(9, 64, 454, 232, T.cardBg);
-
-  for (int i = 0; i < TOTAL_THEMES; i++)
-  {
-    int col = i % 2, row = i / 2;
-    int sx = 14 + col * 224, sy = 68 + row * 74 - settingsScrollY, sw = 216, sh = 66;
-
-    if (sy + sh < 64 || sy > 295)
-      continue;
-    const ThemePalette *th = ALL_THEMES[i];
-    bool isSelected = (i == selectedTheme);
-
-    int drawY = max(64, sy);
-    int drawH = min(295, sy + sh) - drawY;
-
-    if (drawH > 0)
-    {
-      tft.fillRect(sx, drawY, sw, drawH, th->cardBg);
-      uint16_t bColor = isSelected ? T.gold : th->cardBorder;
-      if (sy >= 64 && sy + sh <= 295)
-      {
-        tft.drawRoundRect(sx, sy, sw, sh, 6, bColor);
-        if (isSelected)
-          tft.drawRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, 5, T.gold);
-      }
-      else
-      {
-        if (sy >= 64)
-          tft.drawFastHLine(sx, sy, sw, bColor);
-        if (sy + sh <= 295)
-          tft.drawFastHLine(sx, sy + sh - 1, sw, bColor);
-        tft.drawFastVLine(sx, drawY, drawH, bColor);
-        tft.drawFastVLine(sx + sw - 1, drawY, drawH, bColor);
-      }
-    }
-
-    if (sy + 6 >= 64 && sy + 22 <= 295)
-    {
-      tft.setTextFont(2);
-      tft.setTextColor(th->textWhite, th->cardBg);
-      tft.drawString(th->name, sx + 8, sy + 6);
-    }
-
-    if (sy + 28 >= 64 && sy + 40 <= 295)
-    {
-      uint16_t pal[15] = {th->bg, th->cardBg, th->cardBorder, th->headerBg, th->barTrack, th->textWhite, th->textMuted, th->textDark, th->tempCool, th->tempWarm, th->tempHot, th->accent1, th->accent2, th->accent3, th->gold};
-      for (int c = 0; c < 15; c++)
-      {
-        tft.fillRect(sx + 8 + c * 13, sy + 28, 12, 12, pal[c]);
-        tft.drawRect(sx + 8 + c * 13, sy + 28, 12, 12, th->cardBorder);
-      }
-    }
-
-    if (sy + 44 >= 64 && sy + 58 <= 295)
-    {
-      tft.fillRect(sx + 8, sy + 44, sw - 16, 14, th->headerBg);
-      tft.drawRect(sx + 8, sy + 44, sw - 16, 14, th->cardBorder);
-      tft.setTextFont(1);
-      tft.setTextColor(th->textMuted, th->headerBg);
-      tft.drawString("BG CARD TXT STATUS ACC", sx + 12, sy + 47);
-    }
-
-    if (isSelected && (sy + 7 >= 64 && sy + 29 <= 295))
-    {
-      int cx = sx + sw - 18, cy = sy + 18;
-      tft.fillCircle(cx, cy, 11, T.gold);
-      tft.drawCircle(cx, cy, 11, th->textWhite);
-      tft.setTextFont(1);
-      tft.setTextColor(th->bg, T.gold);
-      tft.drawCentreString("OK", cx, cy - 8, 2);
-    }
-  }
-
-  tft.fillRect(464, 64, 6, 232, T.headerBg);
-  int barH = max(24, 232 * 232 / (5 * 74));
-  int barY = 64 + (settingsScrollY * (232 - barH)) / MAX_SETTINGS_SCROLL;
-  tft.fillRoundRect(464, barY, 6, barH, 2, T.gold);
+  tft.fillRect(10, 80, 460, 212, T.cardBg);
+  if (settingsTab == 0)
+    drawNetworkSettings();
+  else
+    drawThemeSettings();
 }
 
 void switchPage(int newPage)
@@ -1315,62 +2460,6 @@ void switchPage(int newPage)
 }
 
 // =========================================================================
-//  WIFI MANAGER CAPTIVE PORTAL SETUP
-// =========================================================================
-void setupWiFiManager()
-{
-  WiFiManager wm;
-
-  String savedUrl = prefs.getString("server_url", "http://192.168.1.50:8085/data.json");
-  savedUrl.toCharArray(serverUrl, sizeof(serverUrl));
-
-  WiFiManagerParameter customUrlParam("server_url", "LibreHardware JSON URL", serverUrl, 128);
-  wm.addParameter(&customUrlParam);
-  wm.setConfigPortalTimeout(180);
-
-  tft.fillScreen(T.bg);
-  tft.drawRoundRect(20, 20, 440, 280, 12, T.cardBorder);
-
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextFont(4);
-  tft.setTextColor(T.accent1, T.bg);
-  tft.drawString("WIFI CAPTIVE PORTAL", 240, 50);
-
-  tft.setTextFont(2);
-  tft.setTextColor(T.textWhite, T.bg);
-  tft.drawString("Connecting / Setup WiFi...", 240, 90);
-  tft.drawString("Connect to Access Point via Phone:", 240, 130);
-
-  tft.fillRoundRect(60, 155, 360, 36, 6, T.headerBg);
-  tft.drawRoundRect(60, 155, 360, 36, 6, T.gold);
-  tft.setTextFont(4);
-  tft.setTextColor(T.gold, T.headerBg);
-  tft.drawString("SSID: CYD-MONITOR-AP", 240, 173);
-
-  tft.setTextFont(2);
-  tft.setTextColor(T.textMuted, T.bg);
-  tft.drawString("Pass: password123", 240, 215);
-  tft.drawString("Configure WiFi & LibreHardware URL via browser", 240, 245);
-  tft.setTextDatum(TL_DATUM);
-
-  if (!wm.autoConnect("CYD-MONITOR-AP", "password123"))
-  {
-    Serial.println("Gagal connect / Portal timeout, restart...");
-    delay(2000);
-    ESP.restart();
-  }
-
-  String newUrl = customUrlParam.getValue();
-  if (newUrl.length() > 0)
-  {
-    prefs.putString("server_url", newUrl);
-    newUrl.toCharArray(serverUrl, sizeof(serverUrl));
-  }
-
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-}
-
-// =========================================================================
 //  SETUP & MAIN LOOP
 // =========================================================================
 void setup()
@@ -1379,6 +2468,9 @@ void setup()
   pinMode(BOOT_BTN_PIN, INPUT_PULLUP);
 
   prefs.begin("hwmon", false);
+  configMutex = xSemaphoreCreateMutex();
+  dataMutex = xSemaphoreCreateMutex();
+
   int savedTheme = prefs.getInt("theme", 0);
   applyTheme(savedTheme);
 
@@ -1401,7 +2493,20 @@ void setup()
     gpuHistory[i] = 0.0;
   }
 
-  setupWiFiManager();
+  tft.fillScreen(T.bg);
+  tft.drawRoundRect(20, 20, 440, 280, 12, T.cardBorder);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.setTextColor(T.accent1, T.bg);
+  tft.drawString("CYD MONITOR", 240, 95);
+  tft.setTextFont(2);
+  tft.setTextColor(T.textMuted, T.bg);
+  tft.drawString("Connecting to Wi-Fi...", 240, 142);
+  tft.setTextFont(1);
+  tft.drawString("Saved networks are tried automatically", 240, 170);
+  tft.setTextDatum(TL_DATUM);
+
+  setupWiFi();
 
   xTaskCreatePinnedToCore(httpFetchTask, "httpFetchTask", 8192, NULL, 1, &httpTaskHandle, 0);
 
@@ -1444,16 +2549,19 @@ void loop()
       lastTouchTime = currentMillis;
       touchStartX = currentX;
       touchStartY = currentY;
+      touchStartMillis = currentMillis;
       dragStartY = currentY;
       startScrollY = settingsScrollY;
       isDraggingSettings = false;
+      longPressFired = false;
 
       if (pomodoroFinished)
         pomodoroFinished = false;
     }
     else
     {
-      if (currentPage == 3 && abs((int)currentY - dragStartY) > 6)
+      if (currentPage == 3 && settingsTab == 1 &&
+          abs((int)currentY - dragStartY) > 6)
       {
         isDraggingSettings = true;
         int deltaY = (int)currentY - dragStartY;
@@ -1462,6 +2570,21 @@ void loop()
         {
           settingsScrollY = newScroll;
           drawSettingsContent();
+        }
+      }
+
+      if (currentPage == 3 && settingsTab == 0 && !isDraggingSettings &&
+          !longPressFired && (currentMillis - touchStartMillis > 800))
+      {
+        int idx = networkIndexAt(touchStartX, touchStartY);
+        if (idx >= 0)
+        {
+          longPressFired = true;
+          String forgotten = wifiProfiles[idx].ssid;
+          removeWifiProfile(idx);
+          showNetworkStatus("NETWORK FORGOTTEN", forgotten, T.tempWarm);
+          delay(700);
+          drawSettingsPage();
         }
       }
     }
@@ -1476,14 +2599,12 @@ void loop()
       // Header Navigation
       if (touchY <= 40)
       {
-        if (touchX >= 0 && touchX < 95)
-          switchPage(0);
-        else if (touchX >= 95 && touchX < 190)
-          switchPage(1);
-        else if (touchX >= 190 && touchX < 285)
-          switchPage(2);
-        else if (touchX >= 285 && touchX < 380)
-          switchPage(3);
+        if (touchX >= 2 && touchX <= 376)
+        {
+          int tab = (touchX - 2) / 94;
+          if (tab >= 0 && tab < TOTAL_PAGES)
+            switchPage(tab);
+        }
       }
       // Page 0: Monitor Subpage Switch & Ping Target Switch
       else if (currentPage == 0)
@@ -1494,9 +2615,9 @@ void loop()
           drawMonitorPage();
           updateMonitorData();
         }
-        else if (monitorSubPage == 1 && touchY >= 78 && touchY <= 178 && touchX >= 244 && touchX <= 464)
+        else if (monitorSubPage == 1 && touchY >= 82 && touchY <= 182 && touchX >= 244 && touchX <= 464)
         {
-          // Tap Card Latency/Ping untuk berganti target
+          // Tap the latency card to cycle the ping target.
           currentPingTargetIdx = (currentPingTargetIdx + 1) % TOTAL_PING_TARGETS;
           updateMonitorData();
         }
@@ -1580,18 +2701,88 @@ void loop()
         currentAnim = (currentAnim + 1) % TOTAL_ANIMS;
         initAnimation();
       }
-      // Settings Theme Selection
-      else if (currentPage == 3 && !isDraggingSettings && touchY >= 64 && touchY <= 296)
+      // Settings: network cards, add/change portal, theme selection
+      else if (currentPage == 3 && !longPressFired)
       {
-        int row = (touchY - 68 + settingsScrollY) / 74;
-        int col = (touchX >= 238) ? 1 : 0;
-        int tappedTheme = row * 2 + col;
-        if (tappedTheme >= 0 && tappedTheme < TOTAL_THEMES && tappedTheme != selectedTheme)
+        if (touchY >= 44 && touchY <= 68)
         {
-          applyTheme(tappedTheme);
-          tft.fillScreen(T.bg);
-          drawHeaderTabs();
-          drawSettingsPage();
+          if (touchX >= 16 && touchX <= 236 && settingsTab != 0)
+          {
+            settingsTab = 0;
+            settingsScrollY = 0;
+            drawSettingsPage();
+          }
+          else if (touchX >= 244 && touchX <= 464 && settingsTab != 1)
+          {
+            settingsTab = 1;
+            settingsScrollY = 0;
+            drawSettingsPage();
+          }
+        }
+        else if (settingsTab == 0)
+        {
+          if (touchY >= 262 && touchY <= 288 && touchX >= 16 && touchX <= 464)
+          {
+            showNetworkStatus("OPENING PORTAL", String("AP: ") + WIFI_AP_SSID, T.gold);
+            bool ok = startConfigPortal();
+            if (ok)
+            {
+              showNetworkStatus("NETWORK SAVED", "CONNECTED", T.tempCool);
+              delay(900);
+            }
+            else
+            {
+              showNetworkStatus("PORTAL CLOSED", "NO CHANGES SAVED", T.tempHot);
+              delay(1000);
+            }
+            drawSettingsPage();
+          }
+          else
+          {
+            int idx = networkIndexAt(touchX, touchY);
+            if (idx >= 0)
+            {
+              int previous = activeProfile;
+              showNetworkStatus("CONNECTING...", wifiProfiles[idx].ssid, T.gold);
+              bool ok = connectProfile(idx, 12000);
+              if (ok)
+              {
+                String detail = wifiProfiles[idx].url.length()
+                                    ? wifiProfiles[idx].url
+                                    : String("SOURCE UNCHANGED");
+                showNetworkStatus("CONNECTED", detail, T.tempCool);
+                delay(900);
+              }
+              else
+              {
+                showNetworkStatus("CONNECTION FAILED", "RESTORING PREVIOUS LINK", T.tempHot);
+                delay(800);
+                if (previous >= 0 && previous != idx)
+                  connectProfile(previous, 8000);
+              }
+              drawSettingsPage();
+            }
+          }
+        }
+        else if (!isDraggingSettings && touchY >= 82 && touchY <= 290)
+        {
+          int row = (touchY - 82 + settingsScrollY) / 74;
+          int col = (touchX >= 238) ? 1 : 0;
+          int cardX = col ? 244 : 16;
+          int cardY = 82 + row * 74 - settingsScrollY;
+          if (touchY >= cardY && touchY <= cardY + 66 &&
+              touchX >= cardX && touchX <= cardX + 220)
+          {
+            int tappedTheme = row * 2 + col;
+            if (tappedTheme >= 0 && tappedTheme < TOTAL_THEMES &&
+                tappedTheme != selectedTheme)
+            {
+              applyTheme(tappedTheme);
+              tft.fillScreen(T.bg);
+              drawHeaderTabs();
+              drawSettingsPage();
+            }
+          }
         }
       }
     }
