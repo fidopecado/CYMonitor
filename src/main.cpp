@@ -211,13 +211,19 @@ int currentAnim = 0;
 const int TOTAL_ANIMS = 3;
 const char *animNames[3] = {"MATRIX RAIN", "STARFIELD 3D", "BOUNCING DVD"};
 
-#define MATRIX_COLS 28
+#define MATRIX_COLS 24
 #define MATRIX_TOP 44
 #define MATRIX_BOTTOM 278
 #define MATRIX_CELL 12
-#define MATRIX_TRAIL 5
+// Trail length and fall speed are randomized per column on every respawn.
+// Speeds are in pixels/second, so the rain stays calm at any frame rate.
+#define MATRIX_TRAIL_MIN 4
+#define MATRIX_TRAIL_MAX 8
+#define MATRIX_SPEED_MIN 60
+#define MATRIX_SPEED_MAX 130
 float matrixY[MATRIX_COLS];
 int matrixSpeed[MATRIX_COLS];
+int matrixLen[MATRIX_COLS];
 
 #define NUM_STARS 50
 struct Star
@@ -1975,8 +1981,7 @@ void updateMonitorData()
 void drawClockPage()
 {
   forceSubPageRefresh = true;
-  tft.fillRoundRect(8, 36, 464, 279, 8, T.cardBg);
-  tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
+  tft.fillRect(0, 32, 480, 288, T.bg);
   tft.setTextDatum(MC_DATUM);
 
   if (clockSubPage == 0)
@@ -1997,7 +2002,7 @@ void drawClockPage()
     tft.drawFastHLine(20, 78, 440, T.cardBorder);
     tft.setTextDatum(TL_DATUM);
     tft.setTextFont(1);
-    tft.setTextColor(T.textMuted, T.cardBg);
+    tft.setTextColor(T.textMuted, T.bg);
     tft.drawString("REALTIME SECONDS PROGRESS METER", 20, 252);
   }
   else
@@ -2011,9 +2016,6 @@ void drawClockPage()
     tft.setTextColor(T.bg, T.accent1);
     tft.drawString("< CLOCK MODE", 400, 56);
     tft.drawFastHLine(20, 78, 440, T.cardBorder);
-    tft.fillRoundRect(90, 88, 300, 60, 8, T.headerBg);
-    tft.drawRoundRect(90, 88, 300, 60, 8, T.cardBorder);
-
     tft.fillRoundRect(30, 95, 46, 46, 6, T.headerBg);
     tft.drawRoundRect(30, 95, 46, 46, 6, T.cardBorder);
     tft.setTextFont(4);
@@ -2051,7 +2053,7 @@ void drawClockPage()
 
     tft.setTextDatum(TL_DATUM);
     tft.setTextFont(1);
-    tft.setTextColor(T.textMuted, T.cardBg);
+    tft.setTextColor(T.textMuted, T.bg);
     tft.drawString("COMPLETED SESSIONS:", 30, 294);
   }
   updateClockPage(true);
@@ -2091,7 +2093,7 @@ void updateClockPage(bool secondChanged)
       char timeStr[12];
       snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       tft.setTextFont(7);
-      tft.setTextColor(T.accent1, T.cardBg);
+      tft.setTextColor(T.accent1, T.bg);
       tft.drawString(timeStr, 240, 130);
 
       static int lastMday = -1;
@@ -2103,7 +2105,7 @@ void updateClockPage(bool secondChanged)
         char dateStr[40];
         snprintf(dateStr, sizeof(dateStr), "%s, %02d %s %04d", days[timeinfo.tm_wday], timeinfo.tm_mday, months[timeinfo.tm_mon], timeinfo.tm_year + 1900);
         tft.setTextFont(4);
-        tft.setTextColor(T.gold, T.cardBg);
+        tft.setTextColor(T.gold, T.bg);
         tft.drawString(dateStr, 240, 201);
       }
 
@@ -2146,7 +2148,7 @@ void updateClockPage(bool secondChanged)
 
       uint16_t pomoColor = pomodoroFinished ? T.tempHot : (pomodoroActive ? T.accent1 : T.textWhite);
       tft.setTextFont(7);
-      tft.setTextColor(pomoColor, T.headerBg);
+      tft.setTextColor(pomoColor, T.bg);
       tft.drawString(pomoStr, 240, 118);
 
       float pct = (pomodoroDurationMs > 0 && (pomodoroActive || pomodoroPaused)) ? (float)pomodoroRemainingMs / (float)pomodoroDurationMs : 1.0;
@@ -2161,7 +2163,7 @@ void updateClockPage(bool secondChanged)
       if (pomodoroSessionsCompleted != lastPomoSessions || forceSubPageRefresh)
       {
         lastPomoSessions = pomodoroSessionsCompleted;
-        tft.fillRect(160, 292, 120, 14, T.cardBg);
+        tft.fillRect(160, 292, 120, 14, T.bg);
         for (int d = 0; d < 5; d++)
         {
           int dotX = 168 + d * 20;
@@ -2192,8 +2194,7 @@ void buildDvdSprite()
 
 void initAnimation()
 {
-  tft.fillRoundRect(8, 36, 464, 279, 8, 0x0000);
-  tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
+  tft.fillRect(0, 32, 480, 288, 0x0000);
   tft.fillRect(16, 282, 448, 24, 0x0821);
   tft.drawRect(16, 282, 448, 24, T.accent3);
 
@@ -2202,7 +2203,8 @@ void initAnimation()
     for (int i = 0; i < MATRIX_COLS; i++)
     {
       matrixY[i] = (float)random(MATRIX_TOP, 180);
-      matrixSpeed[i] = random(4, 9);
+      matrixSpeed[i] = random(MATRIX_SPEED_MIN, MATRIX_SPEED_MAX + 1);
+      matrixLen[i] = random(MATRIX_TRAIL_MIN, MATRIX_TRAIL_MAX + 1);
     }
   }
   else if (currentAnim == 1)
@@ -2246,15 +2248,19 @@ void renderMatrixFrame(float dt)
   const char glyphs[] = "0123456789ABCDEFXYZ#*+<>$%&";
   const int numGlyphs = sizeof(glyphs) - 1;
 
-  // White head fading through progressively darker theme-accent shades.
-  uint16_t trailColors[MATRIX_TRAIL];
-  trailColors[0] = TFT_WHITE;
-  const int shadeStep = 180 / max(1, MATRIX_TRAIL - 2);
-  for (int j = 1; j < MATRIX_TRAIL; j++)
+  // Build a separate gradient for each possible trail length so every column
+  // fades naturally regardless of its randomized length.
+  uint16_t trailColors[MATRIX_TRAIL_MAX + 1][MATRIX_TRAIL_MAX];
+  for (int len = MATRIX_TRAIL_MIN; len <= MATRIX_TRAIL_MAX; len++)
   {
-    trailColors[j] = scaleColor565(T.accent3, 255 - (j - 1) * shadeStep);
-    if (trailColors[j] == 0x0000)
-      trailColors[j] = 0x0020;
+    trailColors[len][0] = TFT_WHITE;
+    const int shadeStep = 180 / max(1, len - 2);
+    for (int j = 1; j < len; j++)
+    {
+      trailColors[len][j] = scaleColor565(T.accent3, 255 - (j - 1) * shadeStep);
+      if (trailColors[len][j] == 0x0000)
+        trailColors[len][j] = 0x0020;
+    }
   }
 
   // Direct TFT rendering keeps the animation responsive; the column sprite
@@ -2265,15 +2271,18 @@ void renderMatrixFrame(float dt)
   tft.startWrite();
   for (int i = 0; i < MATRIX_COLS; i++)
   {
-    int colX = 20 + (i * 420) / (MATRIX_COLS - 1);
-    float stepF = (float)matrixSpeed[i] * dt * 60.0f;
+    int colX = 20 + (i * 428) / (MATRIX_COLS - 1);
+    int trailLen = matrixLen[i];
+    float stepF = (float)matrixSpeed[i] * dt;
 
-    if (matrixY[i] - (MATRIX_TRAIL * MATRIX_CELL) > MATRIX_BOTTOM)
+    if (matrixY[i] - (trailLen * MATRIX_CELL) > MATRIX_BOTTOM)
     {
       tft.fillRect(colX, MATRIX_TOP, 10, MATRIX_BOTTOM - MATRIX_TOP, 0x0000);
       matrixY[i] = (float)(MATRIX_TOP + random(0, 30));
-      matrixSpeed[i] = random(4, 9);
-      stepF = (float)matrixSpeed[i] * dt * 60.0f;
+      matrixSpeed[i] = random(MATRIX_SPEED_MIN, MATRIX_SPEED_MAX + 1);
+      matrixLen[i] = random(MATRIX_TRAIL_MIN, MATRIX_TRAIL_MAX + 1);
+      trailLen = matrixLen[i];
+      stepF = (float)matrixSpeed[i] * dt;
     }
 
     int headY = (int)matrixY[i];
@@ -2282,7 +2291,7 @@ void renderMatrixFrame(float dt)
     // A full cell of clear removes the previous tail glyph; larger frame steps
     // extend the clear so slow frames cannot leave stale glyphs behind.
     int clearH = max(MATRIX_CELL, (int)ceilf(stepF));
-    int clearY = headY - (MATRIX_TRAIL - 1) * MATRIX_CELL - clearH;
+    int clearY = headY - (trailLen - 1) * MATRIX_CELL - clearH;
 
     if (clearY < MATRIX_TOP)
     {
@@ -2294,13 +2303,13 @@ void renderMatrixFrame(float dt)
     if (clearH > 0)
       tft.fillRect(colX, clearY, 10, clearH, 0x0000);
 
-    for (int j = 0; j < MATRIX_TRAIL; j++)
+    for (int j = 0; j < trailLen; j++)
     {
       int y = headY - j * MATRIX_CELL;
       if (y < MATRIX_TOP || y + 8 > MATRIX_BOTTOM)
         continue;
       tft.drawChar(colX + 1, y, glyphs[random(0, numGlyphs)],
-                   trailColors[j], 0x0000, 1);
+                   trailColors[trailLen][j], 0x0000, 1);
     }
 
     matrixY[i] += stepF;
@@ -2424,6 +2433,10 @@ void renderDvdFrame(float dt)
 
 void renderAnimationFrame()
 {
+  // Never advance animation state while another page is on screen.
+  if (currentPage != 2)
+    return;
+
   unsigned long now = millis();
   float dt = (lastAnimUpdate == 0) ? (1.0f / 60.0f) : (float)(now - lastAnimUpdate) / 1000.0f;
   lastAnimUpdate = now;
@@ -2522,10 +2535,10 @@ void drawNetworkSettings()
   {
     tft.setTextDatum(MC_DATUM);
     tft.setTextFont(4);
-    tft.setTextColor(T.textMuted, T.cardBg);
+    tft.setTextColor(T.textMuted, T.bg);
     tft.drawString("NO SAVED NETWORKS", 240, 148);
     tft.setTextFont(1);
-    tft.setTextColor(T.textDark, T.cardBg);
+    tft.setTextColor(T.textDark, T.bg);
     tft.drawString("USE ADD / CHANGE NETWORK BELOW", 240, 178);
     tft.setTextDatum(TL_DATUM);
   }
@@ -2624,9 +2637,9 @@ void drawThemeFooter()
     snprintf(hint, sizeof(hint), "%s  |  TAP TO APPLY  |  %d/%d",
              action, themePage + 1, THEME_PAGES);
   }
-  tft.fillRect(16, 294, 448, 12, T.cardBg);
+  tft.fillRect(16, 294, 448, 12, T.bg);
   tft.setTextFont(1);
-  tft.setTextColor(T.textMuted, T.cardBg);
+  tft.setTextColor(T.textMuted, T.bg);
   drawCenteredText(hint, 240, 300, 1);
 }
 
@@ -2644,21 +2657,21 @@ void drawThemeSettings()
 
   // Paint only the gaps and empty cells. The cards are opaque, so this
   // avoids the full-area clear that made paging look like a flash.
-  tft.fillRect(contentLeft, 80, contentRight - contentLeft, contentTop - 80, T.cardBg);
+  tft.fillRect(contentLeft, 80, contentRight - contentLeft, contentTop - 80, T.bg);
   const int gridBottom = contentTop + THEME_ROWS * rowPitch - (rowPitch - cardH);
-  tft.fillRect(contentLeft, gridBottom, contentRight - contentLeft, contentBottom - gridBottom, T.cardBg);
+  tft.fillRect(contentLeft, gridBottom, contentRight - contentLeft, contentBottom - gridBottom, T.bg);
 
   for (int row = 0; row < THEME_ROWS; row++)
   {
     int y = contentTop + row * rowPitch;
-    tft.fillRect(contentLeft, y, colX[0] - contentLeft, cardH, T.cardBg);
-    tft.fillRect(colX[0] + cardW, y, colX[1] - (colX[0] + cardW), cardH, T.cardBg);
-    tft.fillRect(colX[1] + cardW, y, contentRight - (colX[1] + cardW), cardH, T.cardBg);
+    tft.fillRect(contentLeft, y, colX[0] - contentLeft, cardH, T.bg);
+    tft.fillRect(colX[0] + cardW, y, colX[1] - (colX[0] + cardW), cardH, T.bg);
+    tft.fillRect(colX[1] + cardW, y, contentRight - (colX[1] + cardW), cardH, T.bg);
   }
   for (int row = 0; row < THEME_ROWS - 1; row++)
   {
     int gapY = contentTop + row * rowPitch + cardH;
-    tft.fillRect(contentLeft, gapY, contentRight - contentLeft, rowPitch - cardH, T.cardBg);
+    tft.fillRect(contentLeft, gapY, contentRight - contentLeft, rowPitch - cardH, T.bg);
   }
 
   int first = themePage * THEME_PAGE_SIZE;
@@ -2676,7 +2689,7 @@ void drawThemeSettings()
   {
     int col = slot % THEME_COLS;
     int row = slot / THEME_COLS;
-    tft.fillRect(colX[col], contentTop + row * rowPitch, cardW, cardH, T.cardBg);
+    tft.fillRect(colX[col], contentTop + row * rowPitch, cardW, cardH, T.bg);
   }
 
   // Page indicator on the right edge.
@@ -2700,7 +2713,7 @@ void refreshThemePage()
 void drawSettingsPage()
 {
   tft.setTextDatum(TL_DATUM);
-  tft.fillRoundRect(8, 36, 464, 279, 8, T.cardBg);
+  tft.fillRect(0, 32, 480, 288, T.bg);
 
   const int tabY = 44;
   const int tabW = 220;
@@ -2733,13 +2746,12 @@ void drawSettingsPage()
   tft.drawFastHLine(16, 292, 448, T.cardBorder);
 
   tft.setTextFont(1);
-  tft.setTextColor(T.textMuted, T.cardBg);
+  tft.setTextColor(T.textMuted, T.bg);
   if (settingsTab == 0)
     drawCenteredText("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
   else
     drawThemeFooter();
 
-  tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
   drawSettingsContent();
 }
 
@@ -3159,7 +3171,9 @@ void loop()
   {
     static unsigned long lastClockAnim = 0;
     static int lastClockSec = -1;
-    if (currentMillis - lastClockAnim >= 35)
+    // The clock only changes once per second; 100 ms is enough to catch the
+    // tick without redrawing loop work 30 times a second.
+    if (currentMillis - lastClockAnim >= 100)
     {
       lastClockAnim = currentMillis;
       time_t now;
