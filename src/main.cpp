@@ -2529,9 +2529,23 @@ void drawThemeCard(int index, int sx, int sy)
 
 void drawThemeFooter()
 {
-  char hint[64];
-  snprintf(hint, sizeof(hint), "SWIPE UP/DOWN FOR MORE  |  PAGE %d/%d",
-           themePage + 1, THEME_PAGES);
+  char hint[80];
+  if (THEME_PAGES <= 1)
+  {
+    snprintf(hint, sizeof(hint), "TAP A THEME TO APPLY");
+  }
+  else
+  {
+    const char *action;
+    if (themePage == 0)
+      action = "SWIPE UP FOR MORE";
+    else if (themePage == THEME_PAGES - 1)
+      action = "SWIPE DOWN FOR PREVIOUS";
+    else
+      action = "SWIPE UP/DOWN FOR MORE";
+    snprintf(hint, sizeof(hint), "%s  |  TAP TO APPLY  |  %d/%d",
+             action, themePage + 1, THEME_PAGES);
+  }
   tft.fillRect(16, 294, 448, 12, T.cardBg);
   tft.setTextFont(1);
   tft.setTextColor(T.textMuted, T.cardBg);
