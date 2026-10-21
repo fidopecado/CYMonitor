@@ -211,8 +211,13 @@ int currentAnim = 0;
 const int TOTAL_ANIMS = 3;
 const char *animNames[3] = {"MATRIX RAIN", "STARFIELD 3D", "BOUNCING DVD"};
 
-#define MATRIX_COLS 36
-int matrixY[MATRIX_COLS], matrixSpeed[MATRIX_COLS], matrixLen[MATRIX_COLS];
+#define MATRIX_COLS 28
+#define MATRIX_TOP 44
+#define MATRIX_BOTTOM 278
+#define MATRIX_CELL 12
+#define MATRIX_TRAIL 5
+float matrixY[MATRIX_COLS];
+int matrixSpeed[MATRIX_COLS];
 
 #define NUM_STARS 50
 struct Star
@@ -221,10 +226,13 @@ struct Star
 };
 Star stars[NUM_STARS];
 
-int dvdX = 100, dvdY = 100, dvdVX = 3, dvdVY = 2;
+int dvdX = 100, dvdY = 100, dvdVX = 1, dvdVY = 1;
+float dvdAccumX = 0.0f, dvdAccumY = 0.0f;
+const float DVD_SPEED_X = 180.0f;
+const float DVD_SPEED_Y = 120.0f;
 uint16_t dvdColor = 0x07FF;
 
-unsigned long animFrameCount = 0, lastFpsTime = 0;
+unsigned long animFrameCount = 0, lastFpsTime = 0, lastAnimUpdate = 0;
 float measuredFps = 60.0;
 
 // Forward Declarations
@@ -2193,9 +2201,8 @@ void initAnimation()
   {
     for (int i = 0; i < MATRIX_COLS; i++)
     {
-      matrixY[i] = random(44, 180);
+      matrixY[i] = (float)random(MATRIX_TOP, 180);
       matrixSpeed[i] = random(4, 9);
-      matrixLen[i] = random(6, 14);
     }
   }
   else if (currentAnim == 1)
@@ -2211,57 +2218,107 @@ void initAnimation()
   {
     dvdX = 100;
     dvdY = 100;
-    dvdVX = 3;
-    dvdVY = 2;
+    dvdVX = 1;
+    dvdVY = 1;
+    dvdAccumX = 0.0f;
+    dvdAccumY = 0.0f;
     dvdColor = T.accent1;
     buildDvdSprite();
   }
   animFrameCount = 0;
   lastFpsTime = millis();
+  lastAnimUpdate = millis();
 }
 
-void renderMatrixFrame()
+uint16_t scaleColor565(uint16_t color, uint8_t scale)
+{
+  uint16_t r = (color >> 11) & 0x1F;
+  uint16_t g = (color >> 5) & 0x3F;
+  uint16_t b = color & 0x1F;
+  r = (r * scale) / 255;
+  g = (g * scale) / 255;
+  b = (b * scale) / 255;
+  return (r << 11) | (g << 5) | b;
+}
+
+void renderMatrixFrame(float dt)
 {
   const char glyphs[] = "0123456789ABCDEFXYZ#*+<>$%&";
   const int numGlyphs = sizeof(glyphs) - 1;
+
+  // White head fading through progressively darker theme-accent shades.
+  uint16_t trailColors[MATRIX_TRAIL];
+  trailColors[0] = TFT_WHITE;
+  const int shadeStep = 180 / max(1, MATRIX_TRAIL - 2);
+  for (int j = 1; j < MATRIX_TRAIL; j++)
+  {
+    trailColors[j] = scaleColor565(T.accent3, 255 - (j - 1) * shadeStep);
+    if (trailColors[j] == 0x0000)
+      trailColors[j] = 0x0020;
+  }
+
+  // Direct TFT rendering keeps the animation responsive; the column sprite
+  // approach was slower on this display because of per-column push overhead.
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.startWrite();
   for (int i = 0; i < MATRIX_COLS; i++)
   {
-    int colX = 20 + i * 12;
-    int tailY = matrixY[i] - (matrixLen[i] * 12);
-    if (tailY >= 44 && tailY <= 270)
-      tft.fillRect(colX, tailY, 10, 14, 0x0000);
+    int colX = 20 + (i * 420) / (MATRIX_COLS - 1);
+    float stepF = (float)matrixSpeed[i] * dt * 60.0f;
 
-    if (matrixY[i] >= 44 && matrixY[i] <= 270)
+    if (matrixY[i] - (MATRIX_TRAIL * MATRIX_CELL) > MATRIX_BOTTOM)
     {
-      tft.setTextFont(1);
-      tft.setTextColor(T.accent3, 0x0000);
-      if (matrixY[i] - 12 >= 44)
-        tft.drawChar(glyphs[random(0, numGlyphs)], colX + 1, matrixY[i] - 12);
-      tft.setTextColor(TFT_WHITE, 0x0000);
-      tft.drawChar(glyphs[random(0, numGlyphs)], colX + 1, matrixY[i]);
-    }
-    matrixY[i] += matrixSpeed[i];
-    if (matrixY[i] - (matrixLen[i] * 12) > 270)
-    {
-      matrixY[i] = 44 + random(0, 30);
+      tft.fillRect(colX, MATRIX_TOP, 10, MATRIX_BOTTOM - MATRIX_TOP, 0x0000);
+      matrixY[i] = (float)(MATRIX_TOP + random(0, 30));
       matrixSpeed[i] = random(4, 9);
-      matrixLen[i] = random(6, 14);
+      stepF = (float)matrixSpeed[i] * dt * 60.0f;
     }
+
+    int headY = (int)matrixY[i];
+
+    // Clear the strip above the tail that the column vacated as it moved down.
+    // A full cell of clear removes the previous tail glyph; larger frame steps
+    // extend the clear so slow frames cannot leave stale glyphs behind.
+    int clearH = max(MATRIX_CELL, (int)ceilf(stepF));
+    int clearY = headY - (MATRIX_TRAIL - 1) * MATRIX_CELL - clearH;
+
+    if (clearY < MATRIX_TOP)
+    {
+      clearH -= (MATRIX_TOP - clearY);
+      clearY = MATRIX_TOP;
+    }
+    if (clearY + clearH > MATRIX_BOTTOM)
+      clearH = MATRIX_BOTTOM - clearY;
+    if (clearH > 0)
+      tft.fillRect(colX, clearY, 10, clearH, 0x0000);
+
+    for (int j = 0; j < MATRIX_TRAIL; j++)
+    {
+      int y = headY - j * MATRIX_CELL;
+      if (y < MATRIX_TOP || y + 8 > MATRIX_BOTTOM)
+        continue;
+      tft.drawChar(colX + 1, y, glyphs[random(0, numGlyphs)],
+                   trailColors[j], 0x0000, 1);
+    }
+
+    matrixY[i] += stepF;
   }
+  tft.endWrite();
 }
 
-void renderStarfieldFrame()
+void renderStarfieldFrame(float dt)
 {
+  tft.startWrite();
   for (int i = 0; i < NUM_STARS; i++)
   {
     int oldPx = 240 + (int)(stars[i].x / stars[i].z * 160.0f);
     int oldPy = 160 + (int)(stars[i].y / stars[i].z * 160.0f);
-    if (oldPx >= 12 && oldPx <= 468 && oldPy >= 42 && oldPy <= 275)
-    {
-      tft.drawPixel(oldPx, oldPy, 0x0000);
-      tft.drawPixel(oldPx + 1, oldPy, 0x0000);
-    }
-    stars[i].z -= 4.0f;
+    if (oldPx >= 12 && oldPx <= 467 && oldPy >= 42 && oldPy <= 275)
+      tft.drawFastHLine(oldPx, oldPy, 2, 0x0000);
+
+    stars[i].z -= 240.0f * dt;
     if (stars[i].z <= 2.0f)
     {
       stars[i].x = random(-200, 200);
@@ -2271,43 +2328,54 @@ void renderStarfieldFrame()
 
     int newPx = 240 + (int)(stars[i].x / stars[i].z * 160.0f);
     int newPy = 160 + (int)(stars[i].y / stars[i].z * 160.0f);
-    if (newPx >= 12 && newPx <= 468 && newPy >= 42 && newPy <= 275)
+    if (newPx >= 12 && newPx <= 467 && newPy >= 42 && newPy <= 275)
     {
       uint16_t col = (stars[i].z < 100) ? TFT_WHITE : ((stars[i].z < 200) ? T.accent1 : T.textDark);
-      tft.drawPixel(newPx, newPy, col);
-      tft.drawPixel(newPx + 1, newPy, col);
+      tft.drawFastHLine(newPx, newPy, 2, col);
     }
   }
+  tft.endWrite();
 }
 
-void renderDvdFrame()
+void renderDvdFrame(float dt)
 {
+  dvdAccumX += (float)dvdVX * DVD_SPEED_X * dt;
+  dvdAccumY += (float)dvdVY * DVD_SPEED_Y * dt;
+  int stepX = (int)dvdAccumX;
+  int stepY = (int)dvdAccumY;
+  dvdAccumX -= stepX;
+  dvdAccumY -= stepY;
+
   int w = DVD_W, h = DVD_H, oldX = dvdX, oldY = dvdY;
-  dvdX += dvdVX;
-  dvdY += dvdVY;
+  dvdX += stepX;
+  dvdY += stepY;
   bool hit = false;
-  if (dvdX <= 12)
+  if (dvdVX < 0 && dvdX <= 12)
   {
     dvdX = 12;
-    dvdVX = abs(dvdVX);
+    dvdVX = 1;
+    dvdAccumX = 0.0f;
     hit = true;
   }
-  else if (dvdX + w >= 468)
+  else if (dvdVX > 0 && dvdX + w >= 468)
   {
     dvdX = 468 - w;
-    dvdVX = -abs(dvdVX);
+    dvdVX = -1;
+    dvdAccumX = 0.0f;
     hit = true;
   }
-  if (dvdY <= 42)
+  if (dvdVY < 0 && dvdY <= 42)
   {
     dvdY = 42;
-    dvdVY = abs(dvdVY);
+    dvdVY = 1;
+    dvdAccumY = 0.0f;
     hit = true;
   }
-  else if (dvdY + h >= 275)
+  else if (dvdVY > 0 && dvdY + h >= 275)
   {
     dvdY = 275 - h;
-    dvdVY = -abs(dvdVY);
+    dvdVY = -1;
+    dvdAccumY = 0.0f;
     hit = true;
   }
   if (hit)
@@ -2323,6 +2391,7 @@ void renderDvdFrame()
   int iy1 = max(oldY, dvdY);
   int ix2 = min(oldX + w, dvdX + w);
   int iy2 = min(oldY + h, dvdY + h);
+  tft.startWrite();
   if (ix1 < ix2 && iy1 < iy2)
   {
     if (oldY < iy1)
@@ -2338,6 +2407,7 @@ void renderDvdFrame()
   {
     tft.fillRect(oldX, oldY, w, h, 0x0000);
   }
+  tft.endWrite();
 
   if (dvdSpriteReady)
   {
@@ -2354,20 +2424,28 @@ void renderDvdFrame()
 
 void renderAnimationFrame()
 {
+  unsigned long now = millis();
+  float dt = (lastAnimUpdate == 0) ? (1.0f / 60.0f) : (float)(now - lastAnimUpdate) / 1000.0f;
+  lastAnimUpdate = now;
+  if (dt > 0.1f)
+    dt = 0.1f;
+  if (dt < 0.001f)
+    dt = 0.001f;
+
+  tft.setTextDatum(TL_DATUM);
   switch (currentAnim)
   {
   case 0:
-    renderMatrixFrame();
+    renderMatrixFrame(dt);
     break;
   case 1:
-    renderStarfieldFrame();
+    renderStarfieldFrame(dt);
     break;
   case 2:
-    renderDvdFrame();
+    renderDvdFrame(dt);
     break;
   }
   animFrameCount++;
-  unsigned long now = millis();
   if (now - lastFpsTime >= 1000)
   {
     measuredFps = (float)animFrameCount * 1000.0 / (float)(now - lastFpsTime);
@@ -2783,6 +2861,15 @@ void loop()
   }
 
   // ====== TOUCH INPUT HANDLER ======
+  // On the animation page, poll touch at 20 ms intervals so the touch
+  // controller read does not stall every animation frame.
+  static unsigned long lastTouchPoll = 0;
+  bool pollTouch = (currentPage != 2) || (currentMillis - lastTouchPoll >= 20);
+  if (pollTouch)
+  {
+    lastTouchPoll = currentMillis;
+    auto handleTouch = [&]()
+    {
   uint16_t rawTouchX = 0, rawTouchY = 0;
   bool isTouched = tft.getTouch(&rawTouchX, &rawTouchY);
 
@@ -3038,6 +3125,9 @@ void loop()
       }
     }
   }
+    };
+    handleTouch();
+  }
 
   // ====== BOOT BUTTON ======
   bool currentBtn = (digitalRead(BOOT_BTN_PIN) == LOW);
@@ -3090,8 +3180,10 @@ void loop()
   }
   else if (currentPage == 2)
   {
+    // Motion is time-based, so raising the render rate does not speed up the
+    // animations. The 5 ms floor only prevents redundant back-to-back draws.
     static unsigned long lastAnimFrame = 0;
-    if (currentMillis - lastAnimFrame >= 16)
+    if (currentMillis - lastAnimFrame >= 5)
     {
       lastAnimFrame = currentMillis;
       renderAnimationFrame();
