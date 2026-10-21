@@ -370,8 +370,8 @@ button { font-family: inherit; }
 .tab {
   position: absolute;
   top: 4px;
-  width: 95px;
-  height: 28px;
+  width: 92px;
+  height: 26px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 2px;
@@ -383,13 +383,13 @@ button { font-family: inherit; }
   letter-spacing: .4px;
   cursor: pointer;
 }
-.tab:nth-child(1) { left: 0; }
-.tab:nth-child(2) { left: 95px; }
+.tab:nth-child(1) { left: 2px; }
+.tab:nth-child(2) { left: 96px; }
 .tab:nth-child(3) { left: 190px; }
-.tab:nth-child(4) { left: 285px; }
+.tab:nth-child(4) { left: 284px; }
 .tab.active {
   top: 4px;
-  height: 30px;
+  height: 28px;
   background: var(--card);
   color: var(--white);
   border-bottom-color: var(--card);
@@ -404,7 +404,7 @@ button { font-family: inherit; }
 }
 .wifi {
   position: absolute;
-  right: 4px;
+  right: 6px;
   top: 0;
   width: 92px;
   height: 32px;
@@ -583,7 +583,7 @@ button.subcard:active { filter: brightness(1.25); }
 }
 .wifi-big {
   position: absolute;
-  left: 18px;
+  left: 10px;
   top: 30px;
   font-family: var(--mono);
   font-size: 40px;
@@ -742,14 +742,6 @@ button.subcard:active { filter: brightness(1.25); }
   cursor: pointer;
 }
 .anim-stage canvas { display: block; width: 100%; height: 100%; }
-.gif-layer {
-  position: absolute;
-  left: 72px;
-  top: 20px;
-  width: 320px;
-  height: 200px;
-  pointer-events: none;
-}
 .anim-hud {
   position: absolute;
   background: #080808;
@@ -767,25 +759,130 @@ button.subcard:active { filter: brightness(1.25); }
 }
 
 /* settings */
-.settings-head, .settings-foot {
+.settings-tab {
   position: absolute;
-  background: var(--header);
   display: flex;
   align-items: center;
   justify-content: center;
-  white-space: nowrap;
-}
-.settings-head {
-  color: var(--a1);
-  font-size: 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--header);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: .3px;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.settings-foot {
-  color: var(--muted);
+.settings-tab.active {
+  border-color: transparent;
+  color: var(--bg);
+}
+.settings-tab.active[data-settings-tab="0"] { background: var(--a3); }
+.settings-tab.active[data-settings-tab="1"] { background: var(--gold); }
+.settings-panel { position: absolute; inset: 0; }
+.settings-panel[hidden] { display: none; }
+.settings-hint {
+  position: absolute;
+  left: 16px;
+  top: 297px;
+  width: 448px;
+  text-align: center;
   font-family: var(--mono);
   font-size: 8px;
+  line-height: 10px;
   letter-spacing: .1px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.network-grid { position: absolute; inset: 0; }
+.network-card {
+  position: absolute;
+  padding: 0;
+  text-align: left;
+  background: var(--header);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--white);
+  font-family: var(--sans);
+  cursor: pointer;
+  overflow: hidden;
+}
+.network-card.active {
+  border-color: var(--cool);
+  box-shadow: inset 0 0 0 1px var(--cool);
+}
+.network-card.active::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--cool);
+}
+.network-card .ssid {
+  position: absolute;
+  left: 10px;
+  top: 7px;
+  width: 178px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--white);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.network-card .url {
+  position: absolute;
+  left: 10px;
+  top: 28px;
+  width: 178px;
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.network-card.active .url { color: var(--cool); }
+.network-card .dot {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dark);
+}
+.network-card.active .dot {
+  background: var(--cool);
+  box-shadow: 0 0 0 2px var(--header), 0 0 0 3px var(--cool);
+}
+.network-empty {
+  position: absolute;
+  left: 16px;
+  top: 135px;
+  width: 448px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 700;
+}
+.network-empty small {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 400;
+  color: var(--dark);
 }
 .settings-viewport {
   position: absolute;
@@ -798,15 +895,29 @@ button.subcard:active { filter: brightness(1.25); }
 .theme-card-list { position: absolute; inset: 0; }
 .theme-card {
   position: absolute;
-  width: 216px;
+  width: 220px;
   height: 66px;
   border: 1px solid;
   border-radius: 6px;
   cursor: pointer;
 }
+.theme-card.selected {
+  border-color: var(--gold) !important;
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+.theme-card.selected::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  width: 3px;
+  height: 46px;
+  border-radius: 1px;
+  background: var(--gold);
+}
 .theme-card .name {
   position: absolute;
-  left: 8px;
+  left: 12px;
   top: 4px;
   font-size: 11px;
   line-height: 16px;
@@ -816,7 +927,7 @@ button.subcard:active { filter: brightness(1.25); }
 }
 .theme-card .swatches {
   position: absolute;
-  left: 8px;
+  left: 13px;
   top: 28px;
   display: flex;
   gap: 1px;
@@ -829,9 +940,9 @@ button.subcard:active { filter: brightness(1.25); }
 }
 .theme-card .strip {
   position: absolute;
-  left: 8px;
+  left: 12px;
   top: 44px;
-  width: 200px;
+  width: 196px;
   height: 14px;
   border: 1px solid;
   font-family: var(--mono);
@@ -841,32 +952,11 @@ button.subcard:active { filter: brightness(1.25); }
   white-space: nowrap;
   overflow: hidden;
 }
-.theme-card .ok {
-  position: absolute;
-  left: 187px;
-  top: 7px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--gold);
-  color: var(--bg);
-  border: 1px solid var(--white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--mono);
-  font-size: 7px;
-  font-weight: 700;
-}
-.scroll-track {
-  position: absolute;
-  background: var(--header);
-}
+.scroll-track { position: absolute; background: var(--header); }
 .scroll-track i {
   position: absolute;
   left: 0;
   width: 6px;
-  height: 145px;
   border-radius: 3px;
   background: var(--gold);
 }

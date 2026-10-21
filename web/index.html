@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CYD Monitor — ESP32 3.5" PC Dashboard</title>
-<meta name="description" content="Interactive simulation of an ESP32-3248S035 hardware monitor: live PC telemetry, clock, Pomodoro, animations and 15 themes on a 480x320 TFT." />
+<meta name="description" content="Interactive simulation of an ESP32-3248S035 hardware monitor: adaptive PC telemetry, saved Wi-Fi networks, clock, Pomodoro, animations and 15 themes on a 480x320 TFT." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Crect x='5' y='8' width='22' height='16' rx='2' fill='%23051f'/%3E%3Crect x='8' y='11' width='7' height='3' fill='%23fc40'/%3E%3Crect x='8' y='16' width='13' height='2' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="styles.css?v=4" />
+<link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
 
@@ -36,7 +36,8 @@
       <p class="lede">
         A self-contained ESP32 dashboard for the <strong>ESP32-3248S035</strong>. It pulls live
         telemetry from LibreHardwareMonitor over Wi-Fi and renders it on a 480 × 320 TFT — with
-        15 themes, a standby clock, a Pomodoro timer and four full-screen animations.
+        saved Wi-Fi profiles, adaptive CPU/GPU discovery, 15 themes, a standby clock, a Pomodoro
+        timer and three full-screen animations.
       </p>
       <div class="chip-row" aria-label="Technology stack">
         <span class="chip">ESP32</span>
@@ -87,36 +88,38 @@
                   <!-- CPU -->
                   <div class="card" style="left:8px;top:36px;width:228px;height:210px;"></div>
                   <div class="badge" style="left:16px;top:43px;width:38px;height:18px;background:var(--a1);color:var(--bg);">CPU</div>
-                  <div class="f1 muted nowrap" style="left:60px;top:48px;">AMD RYZEN 5 5600</div>
+                  <div class="f1 muted nowrap" id="cpuName" style="left:60px;top:48px;max-width:162px;overflow:hidden;text-overflow:ellipsis;">AMD RYZEN 5 5600</div>
 
-                  <div class="temp-row" style="left:16px;top:60px;">
+                  <div class="temp-row" style="left:16px;top:65px;">
                     <span class="f6" id="cpuTemp">--.-</span>
                     <span class="deg">°C</span>
                   </div>
                   <div class="trend" id="cpuTrend" style="left:148px;top:75px;"></div>
 
-                  <div class="f1 muted nowrap" style="left:16px;top:117px;">LOAD: <span id="cpuLoad">--</span>%</div>
-                  <div class="minibar" style="left:80px;top:119px;width:60px;height:6px;"><i id="cpuBar"></i></div>
-                  <div class="f1 muted nowrap" id="cpuExtra" style="left:150px;top:117px;">-- W</div>
+                  <div class="f1 muted nowrap" style="left:16px;top:117px;">LOAD</div>
+                  <div class="minibar" style="left:46px;top:119px;width:54px;height:6px;"><i id="cpuBar"></i></div>
+                  <div class="f1 muted nowrap" id="cpuLoad" style="left:106px;top:117px;">--.-%</div>
+                  <div class="f1 muted nowrap" id="cpuExtra" style="left:146px;top:117px;width:82px;text-align:right;">-- W</div>
 
                   <canvas class="spark" id="cpuSpark" width="636" height="312" style="left:16px;top:133px;"></canvas>
 
                   <!-- GPU -->
                   <div class="card" style="left:244px;top:36px;width:228px;height:210px;"></div>
                   <div class="badge" style="left:252px;top:43px;width:38px;height:18px;background:var(--a2);color:var(--bg);">GPU</div>
-                  <div class="f1 muted nowrap" style="left:296px;top:48px;">RX 6700 XT</div>
+                  <div class="f1 muted nowrap" id="gpuName" style="left:296px;top:48px;max-width:162px;overflow:hidden;text-overflow:ellipsis;">RX 6700 XT</div>
 
-                  <div class="temp-row" style="left:252px;top:60px;">
+                  <div class="temp-row" style="left:252px;top:65px;">
                     <span class="f6" id="gpuTemp">--.-</span>
                     <span class="deg">°C</span>
                   </div>
 
                   <div class="hot-pill" id="gpuHot" style="left:368px;top:43px;width:96px;height:18px;">HOT: --.-C</div>
-                  <div class="trend" id="gpuTrend" style="left:384px;top:75px;"></div>
+                  <div class="trend" id="gpuTrend" style="left:388px;top:75px;"></div>
 
-                  <div class="f1 muted nowrap" style="left:252px;top:117px;">LOAD: <span id="gpuLoad">--</span>%</div>
-                  <div class="minibar" style="left:316px;top:119px;width:60px;height:6px;"><i id="gpuBar"></i></div>
-                  <div class="f1 muted nowrap" id="gpuVram" style="left:386px;top:117px;">VRAM: --</div>
+                  <div class="f1 muted nowrap" style="left:252px;top:117px;">LOAD</div>
+                  <div class="minibar" style="left:282px;top:119px;width:54px;height:6px;"><i id="gpuBar"></i></div>
+                  <div class="f1 muted nowrap" id="gpuLoad" style="left:342px;top:117px;">--.-%</div>
+                  <div class="f1 muted nowrap" id="gpuVram" style="left:380px;top:117px;width:84px;text-align:right;">VRAM: --</div>
 
                   <canvas class="spark" id="gpuSpark" width="636" height="312" style="left:252px;top:133px;"></canvas>
 
@@ -125,45 +128,45 @@
                   <div class="badge" style="left:16px;top:257px;width:44px;height:16px;background:var(--a3);color:var(--bg);">RAM</div>
                   <div class="f1 muted nowrap" style="left:68px;top:260px;">SYSTEM MEMORY</div>
 
-                  <div class="f1 nowrap" id="ramUsed" style="left:180px;top:260px;color:var(--a1);">-- GB / -- GB</div>
-                  <div class="f2 nowrap" id="ramPct" style="left:330px;top:257px;">--.-%</div>
-                  <div class="f1 muted nowrap" id="ramPower" style="left:396px;top:260px;">PWR: --.-W</div>
+                  <div class="f1 nowrap" id="ramUsed" style="left:318px;top:260px;width:96px;text-align:right;color:var(--a1);">-- GB / -- GB</div>
+                  <div class="f2 nowrap" id="ramPct" style="left:422px;top:257px;width:42px;text-align:right;">--.-%</div>
                   <div class="minibar" style="left:16px;top:279px;width:448px;height:8px;"><i id="ramBar"></i></div>
 
-                  <div class="f1 muted nowrap endpoint" style="left:16px;top:298px;">ENDPOINT: http://192.168.1.50:8085/data.json</div>
+                  <div class="f1 muted nowrap endpoint" id="endpoint" style="left:16px;top:300px;">SOURCE: http://192.168.1.50:8085/data.json</div>
                   <button class="chip-btn" id="toDiag" style="left:320px;top:292px;width:144px;height:20px;background:var(--a2);color:var(--bg);">WIFI DIAG &gt;</button>
                 </div>
 
                 <div class="mon-panel" data-sub="1" hidden>
-                  <div class="card" style="left:8px;top:36px;width:464px;height:274px;"></div>
+                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
                   <div class="badge" style="left:16px;top:44px;width:150px;height:22px;background:var(--a1);color:var(--bg);">WIFI DIAGNOSTICS</div>
-                  <div class="rule" style="left:16px;top:72px;width:448px;"></div>
+                  <div class="rule" style="left:16px;top:74px;width:448px;"></div>
 
-                  <div class="subcard" style="left:16px;top:78px;width:220px;height:100px;">
+                  <div class="subcard" style="left:16px;top:82px;width:220px;height:100px;">
                     <div class="card-title" style="color:var(--gold);">LINK QUALITY</div>
                     <div class="wifi-big" id="signalPct">--%</div>
-                    <div class="f1 muted nowrap" id="rssiLine" style="left:104px;top:32px;">RSSI: -- dBm</div>
-                    <div class="f1 muted nowrap" id="chLine" style="left:104px;top:50px;">CH&nbsp;&nbsp;: --</div>
-                    <div class="f1 muted nowrap" id="ssidLine" style="left:104px;top:68px;">SSID: ----------</div>
+                    <div class="f1 muted nowrap" id="rssiLine" style="left:132px;top:30px;">RSSI: -- dBm</div>
+                    <div class="f1 muted nowrap" id="chLine" style="left:132px;top:48px;">CH&nbsp;&nbsp;: --</div>
+                    <div class="f1 muted nowrap" id="ssidLine" style="left:132px;top:66px;">SSID: ----------</div>
                   </div>
 
-                  <button class="subcard ping-card" id="pingCard" style="left:244px;top:78px;width:220px;height:100px;" aria-label="Cycle ping target">
+                  <button class="subcard ping-card" id="pingCard" style="left:244px;top:82px;width:220px;height:100px;" aria-label="Cycle ping target">
                     <div class="card-title" style="color:var(--gold);">LATENCY (PING)</div>
-                    <div class="f1 nowrap" id="pingTarget" style="left:10px;top:28px;color:var(--gold);">TARGET: GOOGLE (8.8.8.8)</div>
+                    <div class="f1 nowrap" id="pingTarget" style="left:10px;top:26px;color:var(--gold);">TARGET: GOOGLE (8.8.8.8)</div>
                     <div class="f2 nowrap" id="pingGw" style="left:10px;top:46px;">GATEWAY : -- ms</div>
-                    <div class="f2 nowrap" id="pingSrv" style="left:10px;top:68px;">SERVER&nbsp;&nbsp;: -- ms</div>
+                    <div class="f2 nowrap" id="pingSrv" style="left:10px;top:66px;">SERVER&nbsp;&nbsp;: -- ms</div>
                   </button>
 
-                  <div class="subcard" style="left:16px;top:186px;width:448px;height:95px;">
+                  <div class="subcard" style="left:16px;top:190px;width:448px;height:92px;">
                     <div class="card-title" style="color:var(--a3);">NETWORK CONFIGURATION</div>
                     <div class="f1 muted nowrap" style="left:10px;top:32px;">LOCAL IP&nbsp;&nbsp;&nbsp;: 192.168.1.42</div>
                     <div class="f1 muted nowrap" style="left:10px;top:50px;">GATEWAY IP&nbsp;: 192.168.1.1</div>
                     <div class="f1 muted nowrap" style="left:10px;top:68px;">SUBNET MASK: 255.255.255.0</div>
-                    <div class="f1 muted nowrap" style="left:250px;top:32px;">MAC ADDRESS: 24:6F:28:AA:BB:CC</div>
-                    <div class="f1 muted nowrap" style="left:250px;top:50px;">DNS SERVER&nbsp;: 192.168.1.1</div>
+                    <div class="f1 muted nowrap" style="left:228px;top:32px;">MAC ADDRESS: 24:6F:28:AA:BB:CC</div>
+                    <div class="f1 muted nowrap" style="left:228px;top:50px;">DNS SERVER&nbsp;: 192.168.1.1</div>
+                    <div class="f1 muted nowrap" id="cfgSsid" style="left:228px;top:68px;">SSID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: HOME-5G</div>
                   </div>
 
-                  <div class="f1 muted nowrap" style="left:16px;top:297px;">TAP PING CARD TO SWITCH TARGET</div>
+                  <div class="f1 muted nowrap" style="left:16px;top:296px;">TAP PING CARD TO SWITCH TARGET</div>
                   <button class="chip-btn" id="toHw" style="left:320px;top:292px;width:144px;height:20px;background:var(--a1);color:var(--bg);">&lt; HARDWARE</button>
                 </div>
               </section>
@@ -171,10 +174,10 @@
               <!-- ---------- PAGE 1 : CLOCK ---------- -->
               <section class="page" data-page="1" aria-label="Clock and Pomodoro">
                 <div class="clock-panel" data-sub="0">
-                  <div class="card" style="left:8px;top:36px;width:464px;height:274px;"></div>
+                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
                   <div class="badge" style="left:16px;top:44px;width:110px;height:24px;background:var(--a1);color:var(--bg);">STANDBY CLOCK</div>
                   <div class="pill" style="left:134px;top:44px;width:94px;height:24px;color:var(--gold);">NTP: GMT+7</div>
-                  <button class="chip-btn" id="toPomo" style="left:320px;top:44px;width:144px;height:26px;background:var(--a2);color:var(--bg);">POMODORO HUB &gt;</button>
+                  <button class="chip-btn" id="toPomo" style="left:320px;top:44px;width:144px;height:24px;background:var(--a2);color:var(--bg);">POMODORO HUB &gt;</button>
                   <div class="rule" style="left:20px;top:78px;width:440px;"></div>
 
                   <div class="clock-time" id="clockTime">00:00:00</div>
@@ -185,14 +188,14 @@
                 </div>
 
                 <div class="clock-panel" data-sub="1" hidden>
-                  <div class="card" style="left:8px;top:36px;width:464px;height:274px;"></div>
+                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
                   <div class="badge" style="left:16px;top:44px;width:120px;height:24px;background:var(--a2);color:var(--bg);">POMODORO HUB</div>
-                  <button class="chip-btn" id="toClock" style="left:336px;top:44px;width:128px;height:26px;background:var(--a1);color:var(--bg);">&lt; CLOCK MODE</button>
+                  <button class="chip-btn" id="toClock" style="left:336px;top:44px;width:128px;height:24px;background:var(--a1);color:var(--bg);">&lt; CLOCK MODE</button>
                   <div class="rule" style="left:20px;top:78px;width:440px;"></div>
 
                   <div class="pomo-timer" style="left:90px;top:88px;width:300px;height:60px;"></div>
                   <div class="pomo-digits" id="pomoDigits">25:00</div>
-                  <div class="pomo-status" id="pomoStatus" style="left:150px;top:44px;width:170px;height:24px;">READY</div>
+                  <div class="pomo-status" id="pomoStatus" style="left:144px;top:44px;width:184px;height:24px;">READY</div>
                   <div class="minibar pomo-bar" style="left:90px;top:156px;width:300px;height:8px;"><i id="pomoBar"></i></div>
 
                   <button class="stepper" id="pomoMinus" style="left:30px;top:95px;" aria-label="Decrease minutes">−</button>
@@ -215,7 +218,6 @@
               <section class="page" data-page="2" aria-label="Animations">
                 <div class="anim-stage" id="animStage" style="left:8px;top:36px;width:464px;height:279px;">
                   <canvas id="animCanvas" width="928" height="558"></canvas>
-                  <img class="gif-layer" id="gifLayer" src="assets/demo.gif" alt="Embedded GIF animation from gif_data.h" hidden />
                 </div>
                 <div class="anim-hud" style="left:16px;top:282px;width:448px;height:24px;">
                   <span id="animHud">MODE: MATRIX RAIN | FPS: 60.0 | TAP SCREEN TO SWITCH ANIMATION</span>
@@ -223,15 +225,27 @@
               </section>
 
               <!-- ---------- PAGE 3 : SETTINGS ---------- -->
-              <section class="page" data-page="3" aria-label="Theme settings">
+              <section class="page" data-page="3" aria-label="Settings">
                 <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
-                <div class="settings-head" style="left:16px;top:37px;width:448px;height:26px;">THEME SETTINGS (15 THEMES)</div>
-                <div class="settings-foot" style="left:16px;top:297px;width:448px;height:17px;">SWIPE UP/DOWN TO SCROLL&nbsp;&nbsp;|&nbsp;&nbsp;TAP A THEME TO APPLY</div>
+                <button class="settings-tab active" data-settings-tab="0" role="tab" aria-selected="true" style="left:16px;top:44px;width:220px;height:24px;">NETWORKS</button>
+                <button class="settings-tab" data-settings-tab="1" role="tab" aria-selected="false" style="left:244px;top:44px;width:220px;height:24px;">THEMES</button>
 
-                <div class="settings-viewport" id="settingsViewport" style="left:9px;top:64px;width:454px;height:232px;">
-                  <div class="theme-card-list" id="themeCards"></div>
+                <div class="rule" style="left:16px;top:78px;width:448px;"></div>
+
+                <div class="settings-panel" data-settings-panel="0">
+                  <div class="network-grid" id="networkGrid"></div>
+                  <button class="chip-btn" id="addNetwork" style="left:16px;top:262px;width:448px;height:26px;background:var(--a1);color:var(--bg);">ADD / CHANGE NETWORK</button>
                 </div>
-                <div class="scroll-track" style="left:464px;top:64px;width:6px;height:232px;"><i id="scrollThumb"></i></div>
+
+                <div class="settings-panel" data-settings-panel="1" hidden>
+                  <div class="settings-viewport" id="settingsViewport" style="left:9px;top:80px;width:462px;height:210px;">
+                    <div class="theme-card-list" id="themeCards"></div>
+                  </div>
+                  <div class="scroll-track" style="left:465px;top:82px;width:6px;height:208px;"><i id="scrollThumb"></i></div>
+                </div>
+
+                <div class="rule" style="left:16px;top:292px;width:448px;"></div>
+                <div class="settings-hint" id="settingsHint">TAP A NETWORK TO CONNECT&nbsp;&nbsp;|&nbsp;&nbsp;HOLD TO FORGET</div>
               </section>
 
             </div>
@@ -270,7 +284,7 @@
       <h2>Built for a desk, not a debug console.</h2>
       <p class="section-lede">
         Every pixel is drawn with TFT_eSPI primitives at 480 × 320. The interface is fully touch-driven:
-        tabs in the header, tappable cards, a scrollable theme gallery and a physical BOOT-key shortcut.
+        tabs in the header, tappable cards, saved-network profiles, a scrollable theme gallery and a physical BOOT-key shortcut.
       </p>
     </div>
 
@@ -280,8 +294,8 @@
           <svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </div>
         <h3>Hardware monitor</h3>
-        <p>CPU and GPU temperatures, hotspot, loads, fan RPM, package power, VRAM and RAM — with trend badges and 40-sample sparklines.</p>
-        <span class="feature-tag">Core 0 HTTP task · 400 ms poll</span>
+        <p>Adaptive CPU and GPU temperatures, hotspot, loads, fan RPM, package power, VRAM and RAM — with trend badges, 40-sample sparklines and a clear no-data state.</p>
+        <span class="feature-tag">Auto-detects AMD / Intel / NVIDIA</span>
       </article>
 
       <article class="feature">
@@ -289,8 +303,8 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5a15 15 0 0 1 19 0M5.5 12a11 11 0 0 1 13 0M8.5 15.5a6.5 6.5 0 0 1 7 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>
         </div>
         <h3>Wi-Fi diagnostics</h3>
-        <p>Signal percentage, RSSI, channel and SSID, the full IP stack, plus latency probes to Google, Cloudflare and Telkom targets.</p>
-        <span class="feature-tag">Non-blocking · 250 ms timeout</span>
+        <p>Signal percentage, RSSI, channel and SSID, the full IP stack, plus latency probes. Saved networks keep their own password and JSON endpoint, and switching is one tap.</p>
+        <span class="feature-tag">Up to 6 profiles · NVS</span>
       </article>
 
       <article class="feature">
@@ -315,9 +329,9 @@
         <div class="feature-icon" style="--icon:var(--a3)">
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 17V7M9 17V4M14 17v-7M19 17V9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M2.5 20.5h19" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5"/></svg>
         </div>
-        <h3>Four animations</h3>
-        <p>Matrix rain, a 3D starfield, a bouncing DVD logo, and a full-colour GIF decoded straight from PROGMEM — all with an FPS HUD.</p>
-        <span class="feature-tag">AnimatedGIF · 320 × 200</span>
+        <h3>Three animations</h3>
+        <p>Matrix rain, a 3D starfield and a bouncing DVD logo — all rendered at 60 fps with an on-screen FPS HUD.</p>
+        <span class="feature-tag">60 fps · no extra flash</span>
       </article>
 
       <article class="feature">
@@ -338,15 +352,16 @@
         <p class="eyebrow"><span></span>From data.json to pixels</p>
         <h2>A tiny, self-hosted telemetry pipeline.</h2>
         <p class="section-lede">
-          LibreHardwareMonitor exposes a JSON tree on your PC. The ESP32 walks that tree by
-          <code>SensorId</code>, parses values with ArduinoJson on a background task, and paints only the
-          regions that changed. Wi-Fi credentials and the endpoint URL are captured through a captive portal.
+          LibreHardwareMonitor exposes a JSON tree on your PC. The ESP32 walks that tree once,
+          classifies each hardware branch as CPU, GPU or RAM, and picks the strongest sensor by
+          type and label. Wi-Fi credentials and the JSON URL are saved per network, so switching
+          machines is a single tap.
         </p>
 
         <ol class="steps">
           <li>
             <span class="step-no">01</span>
-            <div><h3>Flash the board</h3><p>PlatformIO builds for <code>esp32dev</code> with the <code>huge_app.csv</code> partition so the embedded GIF fits.</p></div>
+            <div><h3>Flash the board</h3><p>PlatformIO builds for <code>esp32dev</code> with the <code>huge_app.csv</code> partition. The GIF was removed, so the firmware now uses far less flash.</p></div>
           </li>
           <li>
             <span class="step-no">02</span>
@@ -354,7 +369,7 @@
           </li>
           <li>
             <span class="step-no">03</span>
-            <div><h3>Join the captive portal</h3><p>Connect to <code>CYD-MONITOR-AP</code>, pick your network, paste the JSON URL. Done.</p></div>
+            <div><h3>Join the captive portal</h3><p>Connect to <code>CYD-MONITOR-AP</code>, pick your network, paste the JSON URL. The profile is saved for next time.</p></div>
           </li>
         </ol>
 
@@ -376,27 +391,23 @@
         </div>
         <pre><code><span class="c-key">void</span> <span class="c-fn">httpFetchTask</span>(<span class="c-key">void</span> *pv) {
   <span class="c-key">for</span> (;;) {
-    <span class="c-key">if</span> (currentPage == <span class="c-num">0</span> &amp;&amp;
+    <span class="c-key">if</span> (pageActive(<span class="c-num">0</span>) &amp;&amp;
         WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
-      http.begin(serverUrl);
+      http.begin(<span class="c-fn">getServerUrl</span>());
       http.setTimeout(<span class="c-num">2000</span>);
 
-      <span class="c-key">int</span> httpCode = http.GET();
-      <span class="c-key">if</span> (httpCode == HTTP_CODE_OK) {
+      <span class="c-key">if</span> (http.GET() == HTTP_CODE_OK) {
         JsonDocument doc;
         deserializeJson(doc, http.getStream(),
           DeserializationOption::NestingLimit(<span class="c-num">30</span>));
 
-        currentCpuTemp = <span class="c-fn">parseFloatValue</span>(
-          <span class="c-fn">findSensorBySensorId</span>(doc.as&lt;JsonVariant&gt;(), CPU_TEMP_ID));
-        currentGpuCore = <span class="c-fn">parseFloatValue</span>(
-          <span class="c-fn">findSensorBySensorId</span>(doc.as&lt;JsonVariant&gt;(), GPU_CORE_ID));
-        currentRamLoad = <span class="c-fn">parseFloatValue</span>(
-          <span class="c-fn">findSensorBySensorId</span>(doc.as&lt;JsonVariant&gt;(), RAM_LOAD_ID));
-
-        <span class="c-fn">pushHistory</span>(cpuHistory, currentCpuTemp);
-        dataUpdated = <span class="c-key">true</span>;
+        ScanResult scan;
+        <span class="c-fn">scanSensorNode</span>(doc.as&lt;JsonVariant&gt;(),
+          HW_OTHER, <span class="c-num">-1</span>, scan);
+        <span class="c-fn">finalizeScan</span>(scan);
+        <span class="c-fn">commitLiveData</span>(scan.data);
+        <span class="c-fn">pushHistory</span>(cpuHistory, scan.data.cpuTemp);
       }
       http.end();
       vTaskDelay(pdMS_TO_TICKS(<span class="c-num">400</span>));
@@ -430,8 +441,8 @@
         <div><dt>Input</dt><dd>Resistive touch + BOOT button</dd></div>
         <div><dt>Brightness</dt><dd>LDR on GPIO 34 → PWM on GPIO 27</dd></div>
         <div><dt>Firmware</dt><dd>Arduino · PlatformIO · TFT_eSPI 2.5</dd></div>
-        <div><dt>Libraries</dt><dd>ArduinoJson · AnimatedGIF · WiFiManager</dd></div>
-        <div><dt>Storage</dt><dd>Preferences (NVS): theme + endpoint</dd></div>
+        <div><dt>Libraries</dt><dd>ArduinoJson · WiFiManager · TFT_eSPI</dd></div>
+        <div><dt>Storage</dt><dd>Preferences (NVS): themes, Wi-Fi profiles, endpoint</dd></div>
       </dl>
     </div>
   </section>
@@ -444,6 +455,6 @@
 
 </main>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

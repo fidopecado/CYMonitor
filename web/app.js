@@ -62,12 +62,19 @@
     rssi: -52,
     pal: PALETTES[0].vars,
     scale: 1,
-    cpu: { temp: 47.2, load: 18.4, power: 65.3, fan: 1180 },
-    gpu: { core: 55.6, hot: 67.2, load: 22.1, vram: 5312 },
+    cpu: { name: 'AMD RYZEN 5 5600', temp: 47.2, load: 18.4, power: 65.3, fan: 1180 },
+    gpu: { name: 'RX 6700 XT', hasHotspot: true, core: 55.6, hot: 67.2, load: 22.1, vram: 5312 },
     ram: { pct: 38.7, used: 12.4, total: 32 },
     latency: { gw: 4, srv: 14 },
     pomo: { active: false, paused: false, finished: false, minutes: 25, remaining: 0, duration: 0, endAt: 0, sessions: 0 },
     scroll: 0,
+    settingsTab: 0,
+    activeNetwork: 0,
+    networks: [
+      { ssid: 'HOME-5G', url: 'http://192.168.1.50:8085/data.json' },
+      { ssid: 'LAPTOP-HOTSPOT', url: 'http://192.168.0.224:8085/data.json' },
+      { ssid: 'OFFICE-2.4G', url: 'http://10.0.0.42:8085/data.json' },
+    ],
   };
 
   // ------------------------------------------------------------------------
@@ -185,42 +192,49 @@
 
   function updateMonitor() {
     const { cpu, gpu, ram } = state;
+    const activeNetwork = state.networks[state.activeNetwork];
 
+    $('#cpuName').textContent = cpu.name;
     const cpuTempEl = $('#cpuTemp');
     cpuTempEl.textContent = fmt(cpu.temp);
     cpuTempEl.style.color = tempColor(cpu.temp);
-    $('#cpuLoad').textContent = fmt(cpu.load);
+    $('#cpuLoad').textContent = fmt(cpu.load) + '%';
     $('#cpuBar').style.width = clamp(cpu.load, 0, 100) + '%';
     $('#cpuBar').style.background = usageColor(cpu.load);
     $('#cpuExtra').textContent = cpu.fan > 0 ? cpu.fan + ' RPM' : fmt(cpu.power, 0) + ' W';
     renderTrend($('#cpuTrend'), trendDelta(cpuHist));
 
+    $('#gpuName').textContent = gpu.name;
+    $('#gpuName').style.maxWidth = gpu.hasHotspot ? '66px' : '162px';
     const gpuTempEl = $('#gpuTemp');
     gpuTempEl.textContent = fmt(gpu.core);
     gpuTempEl.style.color = tempColor(gpu.core);
-    $('#gpuLoad').textContent = fmt(gpu.load);
+    $('#gpuLoad').textContent = fmt(gpu.load) + '%';
     $('#gpuBar').style.width = clamp(gpu.load, 0, 100) + '%';
     $('#gpuBar').style.background = usageColor(gpu.load);
     $('#gpuVram').textContent = gpu.vram > 1024 ? 'VRAM: ' + fmt(gpu.vram / 1024) + 'GB' : 'VRAM: ' + Math.round(gpu.vram) + 'MB';
 
     const hotEl = $('#gpuHot');
-    hotEl.textContent = 'HOT: ' + fmt(gpu.hot) + 'C';
-    if (gpu.hot >= 85) {
-      hotEl.style.background = 'var(--hot)';
-      hotEl.style.color = 'var(--white)';
-    } else {
-      hotEl.style.background = 'var(--border)';
-      hotEl.style.color = 'var(--gold)';
+    hotEl.style.display = gpu.hasHotspot ? 'flex' : 'none';
+    if (gpu.hasHotspot) {
+      hotEl.textContent = 'HOT: ' + fmt(gpu.hot) + 'C';
+      if (gpu.hot >= 85) {
+        hotEl.style.background = 'var(--hot)';
+        hotEl.style.color = 'var(--white)';
+      } else {
+        hotEl.style.background = 'var(--border)';
+        hotEl.style.color = 'var(--gold)';
+      }
     }
     renderTrend($('#gpuTrend'), trendDelta(gpuHist));
 
-    $('#ramUsed').textContent = fmt(ram.used) + ' GB / ' + fmt(ram.total) + ' GB';
+    $('#ramUsed').textContent = fmt(ram.used) + ' / ' + fmt(ram.total) + ' GB';
     const ramPct = $('#ramPct');
     ramPct.textContent = fmt(ram.pct) + '%';
     ramPct.style.color = usageColor(ram.pct);
-    $('#ramPower').textContent = 'PWR: ' + fmt(cpu.power) + 'W';
     $('#ramBar').style.width = clamp(ram.pct, 0, 100) + '%';
     $('#ramBar').style.background = usageColor(ram.pct);
+    $('#endpoint').textContent = 'SOURCE: ' + (activeNetwork ? activeNetwork.url : 'NO SOURCE URL');
 
     drawSpark('cpuSpark');
     drawSpark('gpuSpark');
@@ -311,6 +325,8 @@
 
   function updateWifiHeader() {
     const rssi = state.rssi;
+    const active = state.networks[state.activeNetwork];
+    const ssid = active ? active.ssid : '—';
     let bars = 0;
     if (rssi > -55) bars = 4;
     else if (rssi > -67) bars = 3;
@@ -324,7 +340,8 @@
     $('#signalPct').textContent = pct + '%';
     $('#rssiLine').textContent = 'RSSI: ' + rssi + ' dBm';
     $('#chLine').textContent = 'CH  : 6';
-    $('#ssidLine').textContent = 'SSID: HOME-5G';
+    $('#ssidLine').textContent = 'SSID: ' + ssid.slice(0, 8);
+    $('#cfgSsid').textContent = 'SSID      : ' + ssid;
   }
 
   function updateWifiPanel(force) {
@@ -513,7 +530,7 @@
   // ------------------------------------------------------------------------
   const animCanvas = $('#animCanvas');
   const actx = animCanvas.getContext('2d');
-  const ANIM_NAMES = ['MATRIX RAIN', 'STARFIELD 3D', 'BOUNCING DVD', 'GIF ANIMATION'];
+  const ANIM_NAMES = ['MATRIX RAIN', 'STARFIELD 3D', 'BOUNCING DVD'];
   const AW = 464, AH = 279, CX = 232, CY = 139;
 
   const matrix = [];
@@ -547,17 +564,9 @@
       dvd = { x: 100, y: 100, vx: 3, vy: 2, color: pal.a1 };
     }
 
-    if (state.anim === 3) {
-      $('#gifLayer').hidden = false;
-      actx.setTransform(2, 0, 0, 2, 0, 0);
-      actx.fillStyle = '#000';
-      actx.fillRect(0, 0, AW, AH);
-    } else {
-      $('#gifLayer').hidden = true;
-      actx.setTransform(2, 0, 0, 2, 0, 0);
-      actx.fillStyle = '#000';
-      actx.fillRect(0, 0, AW, AH);
-    }
+    actx.setTransform(2, 0, 0, 2, 0, 0);
+    actx.fillStyle = '#000';
+    actx.fillRect(0, 0, AW, AH);
     updateAnimHud(60);
   }
 
@@ -679,22 +688,128 @@
   });
 
   // ------------------------------------------------------------------------
-  // settings: scrollable theme gallery
+  // settings: saved networks + scrollable theme gallery
   // ------------------------------------------------------------------------
   const settingsViewport = $('#settingsViewport');
   const cardsHost = $('#themeCards');
-  const MAX_SCROLL = 360;
+  const networkGrid = $('#networkGrid');
+  const MAX_SCROLL = 382;
+  const SCROLL_TRACK_H = 208;
+  const SCROLL_THUMB_H = 73;
   const cardRefs = [];
   let drag = { active: false, moved: false, startY: 0, startScroll: 0 };
+  let networkPressTimer = null;
+
+  function setSettingsTab(tab) {
+    state.settingsTab = tab;
+    $$('.settings-tab').forEach((b) => {
+      const on = Number(b.dataset.settingsTab) === tab;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    $$('.settings-panel').forEach((p) => {
+      p.hidden = Number(p.dataset.settingsPanel) !== tab;
+    });
+    $('#settingsHint').innerHTML = tab === 0
+      ? 'TAP A NETWORK TO CONNECT&nbsp;&nbsp;|&nbsp;&nbsp;HOLD TO FORGET'
+      : 'SWIPE UP/DOWN TO SCROLL&nbsp;&nbsp;|&nbsp;&nbsp;TAP A THEME TO APPLY';
+    if (tab === 1) {
+      setScroll(state.scroll);
+    } else {
+      renderNetworks();
+    }
+  }
+
+  function renderNetworks() {
+    clearTimeout(networkPressTimer);
+    networkGrid.innerHTML = '';
+    if (!state.networks.length) {
+      const empty = document.createElement('div');
+      empty.className = 'network-empty';
+      empty.innerHTML = 'NO SAVED NETWORKS<small>USE ADD / CHANGE NETWORK BELOW</small>';
+      networkGrid.appendChild(empty);
+      return;
+    }
+
+    state.networks.forEach((net, i) => {
+      const active = i === state.activeNetwork;
+      const card = document.createElement('button');
+      card.className = 'network-card' + (active ? ' active' : '');
+      card.style.left = (i % 2 === 0 ? 16 : 244) + 'px';
+      card.style.top = 82 + Math.floor(i / 2) * 60 + 'px';
+      card.style.width = '220px';
+      card.style.height = '52px';
+      card.setAttribute('aria-label', (active ? 'Connected: ' : 'Connect to ') + net.ssid);
+      card.innerHTML = '<span class="ssid"></span><span class="url"></span><i class="dot"></i>';
+      card.querySelector('.ssid').textContent = net.ssid;
+      card.querySelector('.url').textContent = net.url || 'NO SOURCE URL';
+
+      card.addEventListener('click', () => {
+        if (card.dataset.forgotten === '1') return;
+        state.activeNetwork = i;
+        state.rssi = clamp(state.rssi + Math.round((Math.random() - 0.5) * 8), -72, -44);
+        renderNetworks();
+        updateMonitor();
+        updateWifiHeader();
+      });
+
+      card.addEventListener('pointerdown', () => {
+        card.dataset.forgotten = '0';
+        clearTimeout(networkPressTimer);
+        networkPressTimer = setTimeout(() => {
+          card.dataset.forgotten = '1';
+          const wasActive = i === state.activeNetwork;
+          state.networks.splice(i, 1);
+          if (wasActive) {
+            state.activeNetwork = Math.min(i, state.networks.length - 1);
+          } else if (i < state.activeNetwork) {
+            state.activeNetwork--;
+          }
+          if (!state.networks.length) state.activeNetwork = -1;
+          renderNetworks();
+          updateMonitor();
+          updateWifiHeader();
+        }, 800);
+      });
+      const cancelPress = () => clearTimeout(networkPressTimer);
+      card.addEventListener('pointerup', cancelPress);
+      card.addEventListener('pointerleave', cancelPress);
+      card.addEventListener('pointercancel', cancelPress);
+
+      networkGrid.appendChild(card);
+    });
+  }
+
+  $$('.settings-tab').forEach((b) => {
+    b.addEventListener('click', () => setSettingsTab(Number(b.dataset.settingsTab)));
+  });
+
+  $('#addNetwork').addEventListener('click', () => {
+    if (state.networks.length >= 6) return;
+    const presets = [
+      { ssid: 'STUDIO-2.4G', url: 'http://192.168.0.224:8085/data.json' },
+      { ssid: 'GUEST-WIFI', url: 'http://192.168.1.50:8085/data.json' },
+      { ssid: 'LAB-5G', url: 'http://10.0.0.42:8085/data.json' },
+    ];
+    const next = presets.find((p) => !state.networks.some((n) => n.ssid === p.ssid)) || {
+      ssid: 'NEW-NETWORK-' + (state.networks.length + 1),
+      url: 'http://192.168.0.224:8085/data.json',
+    };
+    state.networks.push(next);
+    state.activeNetwork = state.networks.length - 1;
+    renderNetworks();
+    updateMonitor();
+    updateWifiHeader();
+  });
 
   function themeCardMarkup(t, i) {
     const v = PALETTES[i].vars;
+    const selected = i === state.theme;
     const swatches = VAR_NAMES.map((n) => `<i style="background:${v[n]};border-color:${v.border}"></i>`).join('');
     return `
-      <div class="name" style="color:${v.white}">${t.name}</div>
+      <div class="name" style="color:${selected ? state.pal.gold : v.white}">${t.name}</div>
       <div class="swatches">${swatches}</div>
-      <div class="strip" style="background:${v.header};border-color:${v.border};color:${v.muted}">BG CARD TXT STATUS ACC</div>
-      <div class="ok" style="background:${v.gold};color:${v.bg}">OK</div>`;
+      <div class="strip" style="background:${v.header};border-color:${v.border};color:${v.muted}">BG CARD TXT STATUS ACC</div>`;
   }
 
   function renderThemeCards() {
@@ -702,23 +817,18 @@
     cardRefs.length = 0;
     THEMES.forEach((t, i) => {
       const card = document.createElement('div');
-      card.className = 'theme-card';
+      card.className = 'theme-card' + (i === state.theme ? ' selected' : '');
       card.dataset.theme = String(i);
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
       card.setAttribute('aria-label', 'Apply ' + t.name + ' theme');
+      card.setAttribute('aria-pressed', String(i === state.theme));
       const v = PALETTES[i].vars;
-      const selected = i === state.theme;
       card.style.background = v.card;
-      card.style.borderColor = selected ? PALETTES[state.theme].vars.gold : v.border;
-      if (selected) card.style.boxShadow = `inset 0 0 0 1px ${PALETTES[state.theme].vars.gold}`;
+      card.style.borderColor = v.border;
       card.innerHTML = themeCardMarkup(t, i);
-      if (!selected) {
-        const ok = card.querySelector('.ok');
-        if (ok) ok.remove();
-      }
-      card.style.left = (i % 2 === 0 ? 5 : 229) + 'px';
-      card.style.top = 4 + Math.floor(i / 2) * 74 + 'px';
+      card.style.left = (i % 2 === 0 ? 7 : 235) + 'px';
+      card.style.top = 2 + Math.floor(i / 2) * 74 + 'px';
 
       card.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -743,10 +853,11 @@
   function setScroll(next) {
     state.scroll = clamp(next, 0, MAX_SCROLL);
     cardRefs.forEach((card, i) => {
-      card.style.top = 4 + Math.floor(i / 2) * 74 - state.scroll + 'px';
+      card.style.top = 2 + Math.floor(i / 2) * 74 - state.scroll + 'px';
     });
-    const thumbH = 145;
-    $('#scrollThumb').style.top = (state.scroll / MAX_SCROLL) * (232 - thumbH) + 'px';
+    $('#scrollThumb').style.height = SCROLL_THUMB_H + 'px';
+    $('#scrollThumb').style.top =
+      (state.scroll / MAX_SCROLL) * (SCROLL_TRACK_H - SCROLL_THUMB_H) + 'px';
   }
 
   settingsViewport.addEventListener('wheel', (e) => {
@@ -755,6 +866,7 @@
   }, { passive: false });
 
   settingsViewport.addEventListener('pointerdown', (e) => {
+    if (state.settingsTab !== 1) return;
     drag.active = true;
     drag.moved = false;
     drag.startY = e.clientY;
@@ -806,6 +918,7 @@
   setPage(0);
   setMonitorSub(0);
   setClockSub(0);
+  setSettingsTab(0);
 
   setInterval(stepTelemetry, 1100);
   setInterval(() => {
