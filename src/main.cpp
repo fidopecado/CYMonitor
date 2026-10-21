@@ -1343,7 +1343,7 @@ void buildLhmFilter(JsonObject level, int depth)
 void httpFetchTask(void *pvParameters)
 {
   JsonDocument filter;
-  buildLhmFilter(filter.to<JsonObject>(), 5);
+  buildLhmFilter(filter.to<JsonObject>(), 7);
 
   for (;;)
   {
