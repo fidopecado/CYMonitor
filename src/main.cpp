@@ -140,6 +140,10 @@ SemaphoreHandle_t dataMutex = NULL;
 TaskHandle_t httpTaskHandle = NULL;
 volatile unsigned long lastSuccessFetch = 0;
 volatile bool dataUpdated = false;
+volatile int lastHttpCode = 0;
+volatile int lastJsonError = 0;
+volatile uint32_t lastFetchHeap = 0;
+volatile bool lastSensorFound = false;
 
 Preferences prefs;
 
@@ -672,8 +676,6 @@ int gpuCandidateScore(const GpuCandidate &gpu)
 
 void finalizeScan(ScanResult &scan)
 {
-  scan.data.valid = true;
-
   if (scan.data.ramUsed > 0.0f && scan.ramAvailable > 0.0f)
   {
     scan.data.ramTotal = scan.data.ramUsed + scan.ramAvailable;
@@ -704,6 +706,12 @@ void finalizeScan(ScanResult &scan)
     scan.data.gpuHasHotspot = gpu.hasHot && gpu.hot > 0.0f;
     scan.data.gpuHasMem = gpu.hasMem && gpu.memUsed > 0.0f;
   }
+
+  bool gpuHasData = best >= 0 &&
+                    (scan.gpus[best].hasTemp || scan.gpus[best].hasLoad || scan.gpus[best].hasMem);
+  scan.data.valid = scan.data.cpuHasTemp || scan.cpuLoadScore > 0 ||
+                    scan.cpuPowerScore > 0 || scan.cpuFanScore > 0 ||
+                    scan.data.ramValid || gpuHasData;
 }
 
 void commitLiveData(const LiveData &next)
@@ -824,6 +832,46 @@ void drawNameText(int x, int y, int maxWidth, const char *name)
   tft.drawString(fitted, x, y);
 }
 
+// drawCentreString() in TFT_eSPI is top-centre (TC_DATUM), not middle-centre.
+// Use this helper when the supplied y is meant to be the vertical centre.
+void drawCenteredText(const char *text, int x, int y, uint8_t font)
+{
+  uint8_t previous = tft.getTextDatum();
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(text, x, y, font);
+  tft.setTextDatum(previous);
+}
+
+void drawFeedStatus(int x, int y)
+{
+  char status[96];
+  bool waiting = (lastSuccessFetch == 0);
+
+  if (waiting && lastHttpCode == 0)
+    snprintf(status, sizeof(status), "DATA: WAITING FOR FIRST FETCH");
+  else if (waiting && lastHttpCode > 0 && lastJsonError == 0 && !lastSensorFound)
+    snprintf(status, sizeof(status), "DATA: NO SENSORS  HTTP %d  HEAP %uK",
+             (int)lastHttpCode, (unsigned)(lastFetchHeap / 1024));
+  else if (waiting && lastHttpCode > 0)
+    snprintf(status, sizeof(status), "DATA: HTTP %d  JSON %d  HEAP %uK",
+             (int)lastHttpCode, (int)lastJsonError, (unsigned)(lastFetchHeap / 1024));
+  else if (waiting)
+    snprintf(status, sizeof(status), "DATA: CONNECT ERR %d  HEAP %uK",
+             (int)lastHttpCode, (unsigned)(lastFetchHeap / 1024));
+  else
+  {
+    bool stale = (millis() - lastSuccessFetch > 10000UL);
+    snprintf(status, sizeof(status), "DATA: %s  HTTP %d  JSON %d  HEAP %uK",
+             stale ? "STALE" : "OK", (int)lastHttpCode,
+             (int)lastJsonError, (unsigned)(lastFetchHeap / 1024));
+  }
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextFont(1);
+  tft.setTextColor(waiting ? T.tempWarm : T.textMuted, T.cardBg);
+  tft.drawString(fitText(String(status), 296, 1), x, y);
+}
+
 void drawGpuHotspot(const LiveData &data)
 {
   uint16_t bg = (data.gpuHot >= 85.0f) ? T.tempHot : T.cardBorder;
@@ -832,7 +880,7 @@ void drawGpuHotspot(const LiveData &data)
   snprintf(text, sizeof(text), "HOT: %.1fC", data.gpuHot);
   tft.setTextFont(1);
   tft.setTextColor((data.gpuHot >= 85.0f) ? T.textWhite : T.gold, bg);
-  tft.drawCentreString(text, 416, 52, 1);
+  drawCenteredText(text, 416, 52, 1);
 }
 
 void drawTrendBadge(int x, int y, float delta, uint16_t bgColor)
@@ -893,19 +941,24 @@ String getServerUrl()
 
 void setServerUrl(const String &url)
 {
-  if (!url.length())
+  String normalized = url;
+  normalized.trim();
+  if (!normalized.length())
     return;
+  if (!normalized.startsWith("http://") && !normalized.startsWith("https://"))
+    normalized = "http://" + normalized;
+
   if (configMutex)
   {
     xSemaphoreTake(configMutex, portMAX_DELAY);
-    url.toCharArray(serverUrl, sizeof(serverUrl));
+    normalized.toCharArray(serverUrl, sizeof(serverUrl));
     xSemaphoreGive(configMutex);
   }
   else
   {
-    url.toCharArray(serverUrl, sizeof(serverUrl));
+    normalized.toCharArray(serverUrl, sizeof(serverUrl));
   }
-  prefs.putString("server_url", url);
+  prefs.putString("server_url", normalized);
 }
 
 void loadWifiProfiles()
@@ -1038,6 +1091,10 @@ void resetTelemetry()
   }
   historyCount = 0;
   lastSuccessFetch = 0;
+  lastHttpCode = 0;
+  lastJsonError = 0;
+  lastFetchHeap = 0;
+  lastSensorFound = false;
   dataUpdated = true;
 }
 
@@ -1266,24 +1323,65 @@ void setupWiFi()
 // =========================================================================
 //  HTTP BACKGROUND FETCH TASK (CORE 0)
 // =========================================================================
+// Keep only the fields the scanner needs. LibreHardwareMonitor's full
+// data.json is ~120 KB; keeping Min/Max/ImageURL/etc. for every sensor can
+// exhaust the ESP32 heap and make deserializeJson() return NoMemory.
+void buildLhmFilter(JsonObject level, int depth)
+{
+  level["HardwareId"] = true;
+  level["Text"] = true;
+  level["Type"] = true;
+  level["SensorId"] = true;
+  level["Value"] = true;
+  if (depth > 0)
+  {
+    JsonObject child = level["Children"][0].to<JsonObject>();
+    buildLhmFilter(child, depth - 1);
+  }
+}
+
 void httpFetchTask(void *pvParameters)
 {
+  JsonDocument filter;
+  buildLhmFilter(filter.to<JsonObject>(), 5);
+
   for (;;)
   {
     if (!networkBusy && currentPage == 0 && monitorSubPage == 0 &&
         WiFi.status() == WL_CONNECTED)
     {
       String url = getServerUrl();
+      url.trim();
+
       HTTPClient http;
-      http.begin(url);
-      http.setTimeout(2000);
+      if (!url.length() || !http.begin(url))
+      {
+        lastHttpCode = -1000;
+        lastJsonError = 0;
+        lastFetchHeap = ESP.getFreeHeap();
+        Serial.printf("HTTP begin failed: '%s' heap=%u\n", url.c_str(), lastFetchHeap);
+        http.end();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        continue;
+      }
+
+      http.setConnectTimeout(4000);
+      http.setTimeout(10000);
 
       int httpCode = http.GET();
+      lastHttpCode = httpCode;
+      lastFetchHeap = ESP.getFreeHeap();
+
       if (httpCode == HTTP_CODE_OK)
       {
         JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, http.getStream(), DeserializationOption::NestingLimit(30));
+        DeserializationError error = deserializeJson(
+            doc, http.getStream(),
+            DeserializationOption::Filter(filter),
+            DeserializationOption::NestingLimit(12));
 
+        lastJsonError = error ? (int)error.code() : 0;
+        lastFetchHeap = ESP.getFreeHeap();
         if (!error)
         {
           ScanResult scan;
@@ -1300,11 +1398,48 @@ void httpFetchTask(void *pvParameters)
             pushHistory(gpuHistory, gpuMetric);
           }
 
-          commitLiveData(scan.data);
-          lastSuccessFetch = millis();
-          dataUpdated = true;
+          lastSensorFound = scan.data.valid;
+
+          if (scan.data.valid)
+          {
+            commitLiveData(scan.data);
+            lastSuccessFetch = millis();
+            dataUpdated = true;
+
+            static unsigned long lastOkLog = 0;
+            if (millis() - lastOkLog >= 5000)
+            {
+              lastOkLog = millis();
+              Serial.printf("DATA ok: cpu=%.1fC/%.1f%%/%.1fW gpu=%.1fC/%.1f%%/%.0fMB ram=%.1f/%.1fGB load=%.1f%% heap=%u\n",
+                            scan.data.cpuTemp, scan.data.cpuLoad, scan.data.cpuPower,
+                            scan.data.gpuTemp, scan.data.gpuLoad, scan.data.gpuMemUsed,
+                            scan.data.ramUsed, scan.data.ramTotal, scan.data.ramLoad,
+                            ESP.getFreeHeap());
+            }
+          }
+          else
+          {
+            static unsigned long lastEmptyLog = 0;
+            if (millis() - lastEmptyLog >= 5000)
+            {
+              lastEmptyLog = millis();
+              Serial.printf("JSON ok but no sensors found: heap=%u\n", ESP.getFreeHeap());
+            }
+          }
+        }
+        else
+        {
+          Serial.printf("JSON error: %s (code %d) heap=%u\n",
+                        error.c_str(), (int)error.code(), ESP.getFreeHeap());
         }
       }
+      else
+      {
+        lastJsonError = 0;
+        Serial.printf("HTTP error: %d url=%s heap=%u\n",
+                      httpCode, url.c_str(), ESP.getFreeHeap());
+      }
+
       http.end();
       vTaskDelay(pdMS_TO_TICKS(400));
     }
@@ -1345,7 +1480,7 @@ void drawHeaderTabs()
 
       tft.setTextFont(2);
       tft.setTextColor(T.textWhite, T.cardBg);
-      tft.drawCentreString(tabNames[i], tx + tabW / 2, tabY + 14, 2);
+      drawCenteredText(tabNames[i], tx + tabW / 2, tabY + 14, 2);
     }
     else
     {
@@ -1354,7 +1489,7 @@ void drawHeaderTabs()
 
       tft.setTextFont(2);
       tft.setTextColor(T.textMuted, T.headerBg);
-      tft.drawCentreString(tabNames[i], tx + tabW / 2, tabY + tabH / 2, 2);
+      drawCenteredText(tabNames[i], tx + tabW / 2, tabY + tabH / 2, 2);
     }
   }
   updateHeaderWifi();
@@ -1490,14 +1625,14 @@ void drawMonitorPage()
     tft.fillRoundRect(16, 43, 38, 18, 4, T.accent1);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent1);
-    tft.drawString("CPU", 22, 44);
+    drawCenteredText("CPU", 35, 52, 2);
 
     tft.fillRoundRect(244, 36, 228, 210, 8, T.cardBg);
     tft.drawRoundRect(244, 36, 228, 210, 8, T.cardBorder);
     tft.fillRoundRect(252, 43, 38, 18, 4, T.accent2);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent2);
-    tft.drawString("GPU", 258, 44);
+    drawCenteredText("GPU", 271, 52, 2);
 
     tft.fillRect(60, 48, 162, 9, T.cardBg);
     drawNameText(60, 48, 162, data.cpuName);
@@ -1516,10 +1651,10 @@ void drawMonitorPage()
     // ---- RAM card --------------------------------------------------------
     tft.fillRoundRect(8, 251, 464, 64, 8, T.cardBg);
     tft.drawRoundRect(8, 251, 464, 64, 8, T.cardBorder);
-    tft.fillRoundRect(16, 257, 44, 16, 4, T.accent3);
+    tft.fillRoundRect(16, 257, 44, 18, 4, T.accent3);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent3);
-    tft.drawString("RAM", 26, 258);
+    drawCenteredText("RAM", 38, 266, 2);
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.cardBg);
     tft.drawString("SYSTEM MEMORY", 68, 260);
@@ -1528,7 +1663,7 @@ void drawMonitorPage()
     tft.fillRoundRect(320, 292, 144, 20, 4, T.accent2);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent2);
-    tft.drawCentreString("WIFI DIAG >", 392, 302, 2);
+    drawCenteredText("WIFI DIAG >", 392, 302, 2);
   }
   else
   {
@@ -1579,14 +1714,12 @@ void drawMonitorPage()
       ssid = ssid.substring(0, 18);
     tft.printf("SSID       : %s", ssid.c_str());
 
-    tft.setTextFont(1);
-    tft.setTextColor(T.textMuted, T.cardBg);
-    tft.drawString("TAP PING CARD TO SWITCH TARGET", 16, 296);
+    drawFeedStatus(16, 296);
 
     tft.fillRoundRect(320, 292, 144, 20, 4, T.accent1);
     tft.setTextFont(2);
     tft.setTextColor(T.bg, T.accent1);
-    tft.drawCentreString("< HARDWARE", 392, 302, 2);
+    drawCenteredText("< HARDWARE", 392, 302, 2);
   }
 }
 
@@ -1818,6 +1951,8 @@ void updateMonitorData()
       tft.printf("SERVER  : %ld ms", pingTarget);
     else
       tft.print("SERVER  : TIMEOUT");
+
+    drawFeedStatus(16, 296);
   }
 }
 
@@ -2129,14 +2264,28 @@ void renderDvdFrame()
   dvdX += dvdVX;
   dvdY += dvdVY;
   bool hit = false;
-  if (dvdX <= 12 || dvdX + w >= 468)
+  if (dvdX <= 12)
   {
-    dvdVX = -dvdVX;
+    dvdX = 12;
+    dvdVX = abs(dvdVX);
     hit = true;
   }
-  if (dvdY <= 42 || dvdY + h >= 275)
+  else if (dvdX + w >= 468)
   {
-    dvdVY = -dvdVY;
+    dvdX = 468 - w;
+    dvdVX = -abs(dvdVX);
+    hit = true;
+  }
+  if (dvdY <= 42)
+  {
+    dvdY = 42;
+    dvdVY = abs(dvdVY);
+    hit = true;
+  }
+  else if (dvdY + h >= 275)
+  {
+    dvdY = 275 - h;
+    dvdVY = -abs(dvdVY);
     hit = true;
   }
   if (hit)
@@ -2144,19 +2293,15 @@ void renderDvdFrame()
     uint16_t colors[] = {T.accent1, T.accent2, T.accent3, T.gold, T.tempCool, T.tempWarm};
     dvdColor = colors[random(0, 6)];
   }
-  if (dvdX > oldX)
-    tft.fillRect(oldX, oldY, dvdX - oldX, h, 0x0000);
-  else if (dvdX < oldX)
-    tft.fillRect(dvdX + w, oldY, oldX - dvdX, h, 0x0000);
-  if (dvdY > oldY)
-    tft.fillRect(oldX, oldY, w, dvdY - oldY, 0x0000);
-  else if (dvdY < oldY)
-    tft.fillRect(oldX, dvdY + h, w, oldY - dvdY, 0x0000);
+
+  // Clear the whole old box. The previous strip-only clear left a ghost
+  // rectangle during diagonal movement, which made the DVD look torn.
+  tft.fillRect(oldX, oldY, w, h, 0x0000);
 
   tft.fillRoundRect(dvdX, dvdY, w, h, 6, dvdColor);
   tft.setTextFont(2);
   tft.setTextColor(0x0000, dvdColor);
-  tft.drawCentreString("CYD 3.5", dvdX + w / 2, dvdY + 8, 2);
+  drawCenteredText("CYD 3.5", dvdX + w / 2, dvdY + h / 2, 2);
 }
 
 void renderAnimationFrame()
@@ -2235,6 +2380,7 @@ int networkIndexAt(int x, int y)
 
 void drawNetworkSettings()
 {
+  tft.setTextDatum(TL_DATUM);
   int effectiveActive = -1;
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -2293,11 +2439,12 @@ void drawNetworkSettings()
   tft.fillRoundRect(16, 262, 448, 26, 5, T.accent1);
   tft.setTextFont(2);
   tft.setTextColor(T.bg, T.accent1);
-  tft.drawCentreString("ADD / CHANGE NETWORK", 240, 275, 2);
+  drawCenteredText("ADD / CHANGE NETWORK", 240, 275, 2);
 }
 
 void drawThemeSettings()
 {
+  tft.setTextDatum(TL_DATUM);
   const int contentTop = 82;
   const int contentBottom = 290;
 
@@ -2403,8 +2550,8 @@ void drawSettingsPage()
     }
 
     tft.setTextFont(2);
-    tft.drawCentreString(i == 0 ? "NETWORKS" : "THEMES",
-                         tabX[i] + tabW / 2, tabY + tabH / 2, 2);
+    drawCenteredText(i == 0 ? "NETWORKS" : "THEMES",
+                     tabX[i] + tabW / 2, tabY + tabH / 2, 2);
   }
 
   tft.drawFastHLine(16, 78, 448, T.cardBorder);
@@ -2413,9 +2560,9 @@ void drawSettingsPage()
   tft.setTextFont(1);
   tft.setTextColor(T.textMuted, T.cardBg);
   if (settingsTab == 0)
-    tft.drawCentreString("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
+    drawCenteredText("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
   else
-    tft.drawCentreString("SWIPE UP/DOWN TO SCROLL  |  TAP A THEME TO APPLY", 240, 300, 1);
+    drawCenteredText("SWIPE UP/DOWN TO SCROLL  |  TAP A THEME TO APPLY", 240, 300, 1);
 
   tft.drawRoundRect(8, 36, 464, 279, 8, T.cardBorder);
   drawSettingsContent();
@@ -2508,7 +2655,7 @@ void setup()
 
   setupWiFi();
 
-  xTaskCreatePinnedToCore(httpFetchTask, "httpFetchTask", 8192, NULL, 1, &httpTaskHandle, 0);
+  xTaskCreatePinnedToCore(httpFetchTask, "httpFetchTask", 12288, NULL, 1, &httpTaskHandle, 0);
 
   switchPage(0);
 }
