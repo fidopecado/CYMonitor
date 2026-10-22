@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CYD Monitor — ESP32 3.5" PC Dashboard</title>
-<meta name="description" content="Interactive simulation and full-screen web app of an ESP32-3248S035 hardware monitor: adaptive PC telemetry, saved Wi-Fi networks, clock, Pomodoro, animations and 18 themes on a 480x320 TFT." />
+<title>CYD Monitor — ESP32 PC Telemetry Dashboard</title>
+<meta name="description" content="A touch-first ESP32-3248S035 dashboard for local PC telemetry from LibreHardwareMonitor, plus a browser recreation of its 480x320 interface." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Crect x='5' y='8' width='22' height='16' rx='2' fill='%23051f'/%3E%3Crect x='8' y='11' width='7' height='3' fill='%23fc40'/%3E%3Crect x='8' y='16' width='13' height='2' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="styles.css?v=15" />
+<link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
 
@@ -18,13 +18,13 @@
     <span>CYD<span class="brand-dot">.</span>MONITOR</span>
   </a>
   <nav class="nav-links" aria-label="Sections">
+    <a href="#overview">Overview</a>
     <a href="#interface">Interface</a>
-    <a href="#features">Features</a>
     <a href="#build">Build</a>
-    <a href="#firmware">Firmware</a>
+    <a href="#specs">Specs</a>
     <a href="app.html">Full app</a>
   </nav>
-  <span class="nav-pill"><span class="pulse"></span>Live demo</span>
+  <span class="nav-pill"><span class="pulse"></span>Interactive demo</span>
 </header>
 
 <main id="top">
@@ -32,30 +32,31 @@
   <!-- ================= HERO ================= -->
   <section class="hero">
     <div class="hero-copy">
-      <p class="eyebrow"><span></span>ESP32 · CYD 3.5" · Interactive simulation</p>
+      <p class="eyebrow"><span></span>ESP32 · CYD 3.5" · Firmware + browser demo</p>
       <h1>Your PC's vitals,<br />on a <em>3.5-inch</em> display.</h1>
       <p class="lede">
-        A self-contained ESP32 dashboard for the <strong>ESP32-3248S035</strong>. It pulls live
-        telemetry from LibreHardwareMonitor over Wi-Fi and renders it on a 480 × 320 TFT — with
-        saved Wi-Fi profiles, adaptive CPU/GPU discovery, 18 themes, a standby clock, a Pomodoro
-        timer and three full-screen animations. The same interface also runs as a responsive web app
-        on your phone or a spare laptop.
+        A touch-first ESP32 dashboard for the <strong>ESP32-3248S035</strong>. It polls
+        LibreHardwareMonitor over the local network and renders CPU, GPU and RAM telemetry on a
+        480 × 320 TFT. The firmware also adds six saved Wi-Fi profiles, an NTP clock, a Pomodoro
+        timer, three animations and 18 themes. This site includes a browser recreation of the same
+        interface — simulated, with no hardware connection.
       </p>
       <div class="chip-row" aria-label="Technology stack">
         <span class="chip">ESP32</span>
-        <span class="chip">Arduino</span>
+        <span class="chip">C++ / Arduino</span>
         <span class="chip">TFT_eSPI</span>
         <span class="chip">LibreHardwareMonitor</span>
         <span class="chip">WiFiManager</span>
+        <span class="chip">PlatformIO</span>
       </div>
       <div class="hero-actions">
         <a class="btn btn-primary" href="app.html">Open full app</a>
         <a class="btn btn-ghost" href="#interface">Explore the interface</a>
       </div>
       <dl class="hero-stats">
-        <div><dt>Resolution</dt><dd>480 × 320</dd></div>
-        <div><dt>Refresh</dt><dd>~60 fps</dd></div>
+        <div><dt>Display</dt><dd>480 × 320</dd></div>
         <div><dt>Themes</dt><dd>18</dd></div>
+        <div><dt>Profiles</dt><dd>6</dd></div>
         <div><dt>Cloud</dt><dd>None</dd></div>
       </dl>
     </div>
@@ -266,7 +267,7 @@
           <span class="foot-sep"></span>
           <span>LDR&nbsp;GPIO34</span>
           <span class="foot-sep"></span>
-          <span>USB-C</span>
+          <span>ST7796&nbsp;TFT</span>
         </div>
       </div>
 
@@ -283,14 +284,46 @@
     </div>
   </section>
 
+  <!-- ================= OVERVIEW ================= -->
+  <section class="section" id="overview">
+    <div class="section-head">
+      <p class="eyebrow"><span></span>Project overview</p>
+      <h2>A desk display for the numbers you actually watch.</h2>
+      <p class="section-lede">
+        CYD Monitor is a personal hardware and web project. The firmware runs on a single
+        ESP32-3248S035 board; this site presents the build and recreates the interface in the browser.
+      </p>
+    </div>
+
+    <div class="brief-grid">
+      <article class="brief-card">
+        <span class="brief-no">01 / Brief</span>
+        <h3>Glanceable, not another window.</h3>
+        <p>PC temperatures and loads usually live behind a desktop app. CYD Monitor puts the essentials on a dedicated 3.5-inch panel that stays on the desk.</p>
+      </article>
+      <article class="brief-card">
+        <span class="brief-no">02 / Approach</span>
+        <h3>Direct LAN polling.</h3>
+        <p>The ESP32 joins the local Wi-Fi, reads LibreHardwareMonitor's JSON endpoint, scans the hardware tree and draws the result with TFT_eSPI. Six saved profiles map each network to its own endpoint.</p>
+      </article>
+      <article class="brief-card">
+        <span class="brief-no">03 / Result</span>
+        <h3>One board, four screens.</h3>
+        <p>Monitor, Clock, Animation and Settings share a 480 × 320 touch UI. The browser demo mirrors those screens with generated data so the project can be explored without the hardware.</p>
+      </article>
+    </div>
+  </section>
+
   <!-- ================= INTERFACE / FEATURES ================= -->
   <section class="section" id="interface">
     <div class="section-head">
       <p class="eyebrow"><span></span>Four screens, one glance</p>
       <h2>Built for a desk, not a debug console.</h2>
       <p class="section-lede">
-        Every pixel is drawn with TFT_eSPI primitives at 480 × 320. The interface is fully touch-driven:
-        tabs in the header, tappable cards, saved-network profiles, a three-page theme gallery and a physical BOOT-key shortcut.
+        The firmware draws every screen with TFT_eSPI primitives at 480 × 320. Navigation is
+        touch-first: header tabs, tappable cards, saved-network management, a paged theme gallery
+        and a BOOT-key page shortcut. The browser demo recreates those controls; it does not control
+        the board.
       </p>
     </div>
 
@@ -300,8 +333,8 @@
           <svg viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </div>
         <h3>Hardware monitor</h3>
-        <p>Adaptive CPU and GPU temperatures, hotspot, loads, fan RPM, package power, VRAM and RAM — with trend badges, 40-sample sparklines and a clear no-data state.</p>
-        <span class="feature-tag">Auto-detects AMD / Intel / NVIDIA</span>
+        <p>Walks the LibreHardwareMonitor tree and scores sensor candidates by type and label. Shows CPU and GPU temperature, load, package power or fan RPM when available, GPU hotspot and VRAM, plus RAM. Trend badges, 40-sample sparklines and a stale-data state.</p>
+        <span class="feature-tag">AMD / Intel / NVIDIA · label-based discovery</span>
       </article>
 
       <article class="feature">
@@ -309,7 +342,7 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 8.5a15 15 0 0 1 19 0M5.5 12a11 11 0 0 1 13 0M8.5 15.5a6.5 6.5 0 0 1 7 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></svg>
         </div>
         <h3>Wi-Fi diagnostics</h3>
-        <p>Signal percentage, RSSI, channel and SSID, the full IP stack, plus latency probes. Saved networks keep their own password and JSON endpoint, and switching is one tap.</p>
+        <p>Signal percentage, RSSI, channel and SSID; local IP, gateway, subnet, MAC and DNS. Latency probes hit the gateway and one of three targets: Google, Cloudflare or Telkom. Six saved profiles each keep their own password and JSON URL.</p>
         <span class="feature-tag">Up to 6 profiles · NVS</span>
       </article>
 
@@ -318,8 +351,8 @@
           <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <h3>Standby clock</h3>
-        <p>NTP-synced time at GMT+7 with a full-width date line and a smooth seconds meter that fills as each minute elapses.</p>
-        <span class="feature-tag">pool.ntp.org · no RTC needed</span>
+        <p>NTP time from pool.ntp.org at GMT+7, with a full date line and a seconds meter. There is no RTC; the clock relies on Wi-Fi and the NTP sync.</p>
+        <span class="feature-tag">pool.ntp.org · GMT+7</span>
       </article>
 
       <article class="feature">
@@ -327,7 +360,7 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/></svg>
         </div>
         <h3>Pomodoro hub</h3>
-        <p>10, 15, 25 or 45-minute presets, start/pause/resume/reset, a 24-block wave progress bar, session dots and a backlight-blink alarm when time is up.</p>
+        <p>10, 15, 25 and 45-minute presets, 1–60 minute manual adjustment, start/pause/resume/reset, a 24-block progress wave and a five-dot session display. The backlight blinks for eight seconds when a session ends.</p>
         <span class="feature-tag">PWM backlight alarm</span>
       </article>
 
@@ -336,8 +369,8 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 17V7M9 17V4M14 17v-7M19 17V9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M2.5 20.5h19" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".5"/></svg>
         </div>
         <h3>Three animations</h3>
-        <p>Matrix rain, a 3D starfield and a bouncing DVD logo — all rendered at 60 fps with an on-screen FPS HUD.</p>
-        <span class="feature-tag">60 fps · no extra flash</span>
+        <p>Matrix rain with 24 columns and 80–160 px/s fall speeds, a 50-star 3D starfield and a bouncing DVD sprite. Motion is time-based, and the on-screen HUD reports measured FPS.</p>
+        <span class="feature-tag">24-column Matrix · FPS HUD</span>
       </article>
 
       <article class="feature">
@@ -345,8 +378,8 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9c0-1.1-.2-2.2-.6-3.2A6.5 6.5 0 0 1 12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="8.5" cy="14" r="1.1" fill="currentColor"/><circle cx="13" cy="13" r="1" fill="currentColor"/></svg>
         </div>
         <h3>Eighteen themes</h3>
-        <p>Duo-tone, E-ink, Emerald, Dracula, Deep Ocean, Sunset, Solarized, Amber CRT, Neon Matrix, Midnight, Crimson, Maroon, Cyber Red, Ruby, Vermilion, Aurora, Sakura and Copper.</p>
-        <span class="feature-tag">Saved to NVS · instant repaint</span>
+        <p>The firmware ships 18 RGB565 palettes, from DUO-TONE and E-INK to Neon Matrix, Aurora and Copper. Settings pages through them six at a time, and the selection is written to NVS.</p>
+        <span class="feature-tag">3-page gallery · saved to NVS</span>
       </article>
     </div>
   </section>
@@ -356,32 +389,37 @@
     <div class="build-grid">
       <div class="build-copy">
         <p class="eyebrow"><span></span>From data.json to pixels</p>
-        <h2>A tiny, self-hosted telemetry pipeline.</h2>
+        <h2>A local telemetry pipeline with a small footprint.</h2>
         <p class="section-lede">
-          LibreHardwareMonitor exposes a JSON tree on your PC. The ESP32 walks that tree once,
-          classifies each hardware branch as CPU, GPU or RAM, and picks the strongest sensor by
-          type and label. Wi-Fi credentials and the JSON URL are saved per network, so switching
-          machines is a single tap.
+          LibreHardwareMonitor exposes a JSON tree on the PC. The ESP32 walks that tree, classifies
+          each hardware branch as CPU, GPU or RAM, and picks the strongest sensor by type and label.
+          Wi-Fi credentials and the JSON URL are saved per network, so switching machines is a
+          single tap.
         </p>
 
         <ol class="steps">
           <li>
             <span class="step-no">01</span>
-            <div><h3>Flash the board</h3><p>PlatformIO builds for <code>esp32dev</code> with the <code>huge_app.csv</code> partition. The GIF was removed, so the firmware now uses far less flash.</p></div>
+            <div><h3>Flash the board</h3><p>PlatformIO builds <code>src/main.cpp</code> for <code>esp32dev</code> with the <code>huge_app.csv</code> partition. <code>platformio.ini</code> defines the ST7796 panel, SPI bus, touch CS and backlight pin.</p></div>
           </li>
           <li>
             <span class="step-no">02</span>
-            <div><h3>Serve the sensor tree</h3><p>Enable <em>Options → Remote Web Server → Run</em> in LibreHardwareMonitor; it listens on port 8085.</p></div>
+            <div><h3>Serve the sensor tree</h3><p>Enable <em>Options → Remote Web Server → Run</em> in LibreHardwareMonitor. The examples in this project use port 8085 for the JSON endpoint.</p></div>
           </li>
           <li>
             <span class="step-no">03</span>
-            <div><h3>Join the captive portal</h3><p>Connect to <code>CYD-MONITOR-AP</code>, pick your network, paste the JSON URL. The profile is saved for next time.</p></div>
+            <div><h3>Join the setup AP</h3><p>On first boot, connect to <code>CYD-MONITOR-AP</code> and open <code>192.168.4.1</code>. Pick the network and paste its JSON URL; the profile is saved in NVS.</p></div>
+          </li>
+          <li>
+            <span class="step-no">04</span>
+            <div><h3>Share the interface</h3><p>Run this static site locally or with Docker. The browser build uses generated telemetry and does not connect to the board.</p></div>
           </li>
         </ol>
 
         <div class="pin-grid">
           <span><b>TFT</b> MOSI 13 · MISO 12 · SCLK 14</span>
           <span><b>CS / DC</b> 15 / 2</span>
+          <span><b>SPI</b> 65 MHz</span>
           <span><b>Backlight</b> 27 (PWM)</span>
           <span><b>Touch</b> CS 33</span>
           <span><b>LDR</b> 34</span>
@@ -396,36 +434,72 @@
           <span class="term-badge">C++</span>
         </div>
         <pre><code><span class="c-key">void</span> <span class="c-fn">httpFetchTask</span>(<span class="c-key">void</span> *pv) {
+  JsonDocument filter;
+  <span class="c-fn">buildLhmFilter</span>(filter.to&lt;JsonObject&gt;(), <span class="c-num">7</span>);
+
   <span class="c-key">for</span> (;;) {
-    <span class="c-key">if</span> (pageActive(<span class="c-num">0</span>) &amp;&amp;
+    <span class="c-key">if</span> (!networkBusy &amp;&amp; currentPage == <span class="c-num">0</span> &amp;&amp;
+        monitorSubPage == <span class="c-num">0</span> &amp;&amp;
         WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
-      http.begin(<span class="c-fn">getServerUrl</span>());
-      http.setTimeout(<span class="c-num">2000</span>);
+      String url = <span class="c-fn">getServerUrl</span>();
+      <span class="c-key">if</span> (http.begin(url)) {
+        http.setConnectTimeout(<span class="c-num">4000</span>);
+        http.setTimeout(<span class="c-num">10000</span>);
 
-      <span class="c-key">if</span> (http.GET() == HTTP_CODE_OK) {
-        JsonDocument doc;
-        deserializeJson(doc, http.getStream(),
-          DeserializationOption::NestingLimit(<span class="c-num">30</span>));
+        <span class="c-key">if</span> (http.GET() == HTTP_CODE_OK) {
+          JsonDocument doc;
+          deserializeJson(doc, http.getStream(),
+            DeserializationOption::Filter(filter),
+            DeserializationOption::NestingLimit(<span class="c-num">12</span>));
 
-        ScanResult scan;
-        <span class="c-fn">scanSensorNode</span>(doc.as&lt;JsonVariant&gt;(),
-          HW_OTHER, <span class="c-num">-1</span>, scan);
-        <span class="c-fn">finalizeScan</span>(scan);
-        <span class="c-fn">commitLiveData</span>(scan.data);
-        <span class="c-fn">pushHistory</span>(cpuHistory, scan.data.cpuTemp);
+          ScanResult scan;
+          <span class="c-fn">scanSensorNode</span>(doc.as&lt;JsonVariant&gt;(),
+            HW_OTHER, <span class="c-num">-1</span>, scan);
+          <span class="c-fn">finalizeScan</span>(scan);
+          <span class="c-fn">commitLiveData</span>(scan.data);
+        }
+        http.end();
       }
-      http.end();
-      vTaskDelay(pdMS_TO_TICKS(<span class="c-num">400</span>));
     }
+    vTaskDelay(pdMS_TO_TICKS(<span class="c-num">400</span>));
   }
 }</code></pre>
         <div class="term-foot">
           <span>Core 0 · priority 1</span>
-          <span>8 KB stack</span>
+          <span>12 KB stack</span>
           <span class="live"><i></i>pinned task</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= ENGINEERING NOTES ================= -->
+  <section class="section" id="notes">
+    <div class="section-head">
+      <p class="eyebrow"><span></span>Engineering notes</p>
+      <h2>Small screen, small heap, no cloud.</h2>
+      <p class="section-lede">
+        A few constraints shaped the firmware and the demo.
+      </p>
+    </div>
+
+    <div class="brief-grid">
+      <article class="brief-card">
+        <span class="brief-no">Heap</span>
+        <h3>Filter before parsing.</h3>
+        <p>LibreHardwareMonitor's full tree is roughly 120 KB. The fetch task applies a JSON filter and a nesting limit so the ESP32 only keeps the fields the scanner uses.</p>
+      </article>
+      <article class="brief-card">
+        <span class="brief-no">Network</span>
+        <h3>Local by design.</h3>
+        <p>Telemetry goes directly from the PC to the board over the LAN. Wi-Fi profiles, endpoints and the theme choice live in NVS; there is no account or cloud service.</p>
+      </article>
+      <article class="brief-card">
+        <span class="brief-no">Scope</span>
+        <h3>The demo is not a remote.</h3>
+        <p>The browser build is a static simulation with generated telemetry. It does not talk to the ESP32 or to LibreHardwareMonitor.</p>
+      </article>
     </div>
   </section>
 
@@ -433,34 +507,36 @@
   <section class="section specs" id="specs">
     <div class="specs-inner">
       <div>
-        <p class="eyebrow"><span></span>Bill of materials</p>
-        <h2>One board. One cable.</h2>
+        <p class="eyebrow"><span></span>Hardware &amp; stack</p>
+        <h2>One board, local data.</h2>
         <p class="section-lede">
-          The ESP32-3248S035 "CYD" bundles an ESP32, a 3.5-inch 480 × 320 ST7796 panel, resistive touch
-          and an LDR in a single yellow PCB. No soldering, no extra sensors.
+          The ESP32-3248S035 "CYD" bundles an ESP32, a 3.5-inch 480 × 320 ST7796 panel, a touch
+          panel and an LDR on one PCB. There is no cloud service in the telemetry loop.
         </p>
       </div>
       <dl class="spec-table">
         <div><dt>Board</dt><dd>ESP32-3248S035 (CYD 3.5″)</dd></div>
-        <div><dt>MCU</dt><dd>ESP32-WROOM-32 · dual-core 240 MHz</dd></div>
+        <div><dt>MCU</dt><dd>ESP32 · dual-core 240 MHz</dd></div>
         <div><dt>Display</dt><dd>ST7796 · 480 × 320 · SPI 65 MHz</dd></div>
-        <div><dt>Input</dt><dd>Resistive touch + BOOT button</dd></div>
-        <div><dt>Brightness</dt><dd>LDR on GPIO 34 → PWM on GPIO 27</dd></div>
-        <div><dt>Firmware</dt><dd>Arduino · PlatformIO · TFT_eSPI 2.5</dd></div>
-        <div><dt>Libraries</dt><dd>ArduinoJson · WiFiManager · TFT_eSPI</dd></div>
-        <div><dt>Storage</dt><dd>Preferences (NVS): themes, Wi-Fi profiles, endpoint</dd></div>
+        <div><dt>Input</dt><dd>Touch panel + BOOT button</dd></div>
+        <div><dt>Brightness</dt><dd>LDR GPIO 34 → PWM GPIO 27</dd></div>
+        <div><dt>Firmware</dt><dd>Arduino / C++ · PlatformIO</dd></div>
+        <div><dt>Libraries</dt><dd>TFT_eSPI 2.5.43+ · ArduinoJson 7 · WiFiManager</dd></div>
+        <div><dt>Storage</dt><dd>NVS: theme, six Wi-Fi profiles, endpoint</dd></div>
+        <div><dt>Data source</dt><dd>LibreHardwareMonitor JSON over the LAN</dd></div>
+        <div><dt>Web demo</dt><dd>Static HTML/CSS/JS · E-INK default · no network calls</dd></div>
       </dl>
     </div>
   </section>
 
   <footer class="site-foot">
     <div class="foot-brand">CYD<span>.</span>MONITOR</div>
-    <p>A browser-side simulation reconstructed from <code>src/main.cpp</code> and <code>platformio.ini</code>.</p>
-    <p class="foot-muted">ESP32 · TFT_eSPI · LibreHardwareMonitor · Built with PlatformIO</p>
+    <p>A browser recreation of the 480 × 320 interface. The demo is simulated; the firmware in <code>src/main.cpp</code> is the real build.</p>
+    <p class="foot-muted">ESP32 · TFT_eSPI · LibreHardwareMonitor · PlatformIO · Docker</p>
   </footer>
 
 </main>
 
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

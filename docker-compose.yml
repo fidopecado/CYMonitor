@@ -1,0 +1,9 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cyd-monitor:local
+    ports:
+      - "8080:80"
+    restart: unless-stopped

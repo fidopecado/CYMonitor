@@ -1,0 +1,14 @@
+.git
+.gitignore
+.pio
+.vscode
+include
+lib
+src
+test
+platformio.ini
+README.md
+web/README.md
+docs
+docker-compose.yml
+*.log
