@@ -1,0 +1,39 @@
+/* ==========================================================================
+   CYD web app — the 480×320 interface, filling the page
+   ========================================================================== */
+
+.app-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #000;
+}
+
+.app-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  background: #000;
+}
+
+.app-stage {
+  width: min(100vw, calc(100dvh * 1.5));
+  min-width: 0;
+}
+
+.app-screen-frame {
+  overflow: hidden;
+  width: 100%;
+  background: #000;
+}
+.app-screen-frame .bezel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+}
+.app-screen-frame .viewport { border-radius: 0; }

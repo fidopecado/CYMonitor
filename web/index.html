@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>CYD Monitor — ESP32 3.5" PC Dashboard</title>
-<meta name="description" content="Interactive simulation of an ESP32-3248S035 hardware monitor: adaptive PC telemetry, saved Wi-Fi networks, clock, Pomodoro, animations and 15 themes on a 480x320 TFT." />
+<meta name="description" content="Interactive simulation and full-screen web app of an ESP32-3248S035 hardware monitor: adaptive PC telemetry, saved Wi-Fi networks, clock, Pomodoro, animations and 18 themes on a 480x320 TFT." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Crect x='5' y='8' width='22' height='16' rx='2' fill='%23051f'/%3E%3Crect x='8' y='11' width='7' height='3' fill='%23fc40'/%3E%3Crect x='8' y='16' width='13' height='2' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="styles.css?v=5" />
+<link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body>
 
@@ -22,6 +22,7 @@
     <a href="#features">Features</a>
     <a href="#build">Build</a>
     <a href="#firmware">Firmware</a>
+    <a href="app.html">Full app</a>
   </nav>
   <span class="nav-pill"><span class="pulse"></span>Live demo</span>
 </header>
@@ -36,8 +37,9 @@
       <p class="lede">
         A self-contained ESP32 dashboard for the <strong>ESP32-3248S035</strong>. It pulls live
         telemetry from LibreHardwareMonitor over Wi-Fi and renders it on a 480 × 320 TFT — with
-        saved Wi-Fi profiles, adaptive CPU/GPU discovery, 15 themes, a standby clock, a Pomodoro
-        timer and three full-screen animations.
+        saved Wi-Fi profiles, adaptive CPU/GPU discovery, 18 themes, a standby clock, a Pomodoro
+        timer and three full-screen animations. The same interface also runs as a responsive web app
+        on your phone or a spare laptop.
       </p>
       <div class="chip-row" aria-label="Technology stack">
         <span class="chip">ESP32</span>
@@ -47,13 +49,13 @@
         <span class="chip">WiFiManager</span>
       </div>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#interface">Explore the interface</a>
-        <a class="btn btn-ghost" href="#build">How it's built <span aria-hidden="true">↘</span></a>
+        <a class="btn btn-primary" href="app.html">Open full app</a>
+        <a class="btn btn-ghost" href="#interface">Explore the interface</a>
       </div>
       <dl class="hero-stats">
         <div><dt>Resolution</dt><dd>480 × 320</dd></div>
         <div><dt>Refresh</dt><dd>~60 fps</dd></div>
-        <div><dt>Themes</dt><dd>15</dd></div>
+        <div><dt>Themes</dt><dd>18</dd></div>
         <div><dt>Cloud</dt><dd>None</dd></div>
       </dl>
     </div>
@@ -174,50 +176,55 @@
               <!-- ---------- PAGE 1 : CLOCK ---------- -->
               <section class="page" data-page="1" aria-label="Clock and Pomodoro">
                 <div class="clock-panel" data-sub="0">
-                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
-                  <div class="badge" style="left:16px;top:44px;width:110px;height:24px;background:var(--a1);color:var(--bg);">STANDBY CLOCK</div>
-                  <div class="pill" style="left:134px;top:44px;width:94px;height:24px;color:var(--gold);">NTP: GMT+7</div>
-                  <button class="chip-btn" id="toPomo" style="left:320px;top:44px;width:144px;height:24px;background:var(--a2);color:var(--bg);">POMODORO HUB &gt;</button>
+                  <div class="clock-accent" style="left:20px;top:44px;height:26px;background:var(--a1);"></div>
+                  <div class="clock-title" style="left:30px;top:47px;">STANDBY CLOCK</div>
+                  <div class="clock-sub" style="left:30px;top:63px;">NTP SYNCED&nbsp;&nbsp;|&nbsp;&nbsp;GMT+7</div>
+                  <button class="clock-link" id="toPomo" style="left:336px;top:44px;width:126px;height:24px;">POMODORO &gt;</button>
+                  <div class="clock-link-rule" style="left:336px;top:68px;width:126px;background:var(--a1);"></div>
                   <div class="rule" style="left:20px;top:78px;width:440px;"></div>
 
+                  <div class="clock-label">LOCAL TIME</div>
                   <div class="clock-time" id="clockTime">00:00:00</div>
                   <div class="clock-date" id="clockDate">—</div>
-
-                  <div class="f1 muted nowrap" style="left:20px;top:252px;">REALTIME SECONDS PROGRESS METER</div>
-                  <div class="ticks" id="ticks" style="left:20px;top:270px;"></div>
+                  <div class="clock-center-rule"></div>
+                  <div class="seconds-track"><i id="secondsBar"></i></div>
+                  <div class="clock-foot"><span>SECONDS</span><span>GMT+7</span></div>
                 </div>
 
                 <div class="clock-panel" data-sub="1" hidden>
-                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
-                  <div class="badge" style="left:16px;top:44px;width:120px;height:24px;background:var(--a2);color:var(--bg);">POMODORO HUB</div>
-                  <button class="chip-btn" id="toClock" style="left:336px;top:44px;width:128px;height:24px;background:var(--a1);color:var(--bg);">&lt; CLOCK MODE</button>
+                  <div class="clock-accent" style="left:20px;top:44px;height:26px;background:var(--a2);"></div>
+                  <div class="clock-title" style="left:30px;top:47px;">POMODORO</div>
+                  <div class="clock-sub" style="left:30px;top:63px;">FOCUS TIMER</div>
+                  <button class="clock-link" id="toClock" style="left:376px;top:44px;width:86px;height:24px;">&lt; CLOCK</button>
+                  <div class="clock-link-rule" style="left:376px;top:68px;width:86px;background:var(--a1);"></div>
                   <div class="rule" style="left:20px;top:78px;width:440px;"></div>
 
-                  <div class="pomo-timer" style="left:90px;top:88px;width:300px;height:60px;"></div>
+                  <div class="pomo-status" id="pomoStatus" style="left:160px;top:44px;width:160px;height:24px;">READY</div>
+                  <div class="clock-label" style="top:94px;">REMAINING</div>
                   <div class="pomo-digits" id="pomoDigits">25:00</div>
-                  <div class="pomo-status" id="pomoStatus" style="left:144px;top:44px;width:184px;height:24px;">READY</div>
-                  <div class="minibar pomo-bar" style="left:90px;top:156px;width:300px;height:8px;"><i id="pomoBar"></i></div>
+                  <button class="stepper" id="pomoMinus" style="left:44px;top:114px;" aria-label="Decrease minutes">−</button>
+                  <button class="stepper" id="pomoPlus" style="left:400px;top:114px;" aria-label="Increase minutes">+</button>
 
-                  <button class="stepper" id="pomoMinus" style="left:30px;top:95px;" aria-label="Decrease minutes">−</button>
-                  <button class="stepper" id="pomoPlus" style="left:404px;top:95px;" aria-label="Increase minutes">+</button>
+                  <div class="clock-label" style="top:164px;">SESSION</div>
+                  <div class="pomo-blocks" id="pomoBlocks" aria-hidden="true"></div>
 
-                  <button class="preset" data-min="10" style="left:30px;top:182px;">10m</button>
-                  <button class="preset" data-min="15" style="left:140px;top:182px;">15m</button>
-                  <button class="preset" data-min="25" style="left:250px;top:182px;">25m</button>
-                  <button class="preset" data-min="45" style="left:360px;top:182px;">45m</button>
+                  <button class="preset" data-min="10" style="left:30px;top:218px;">10m</button>
+                  <button class="preset" data-min="15" style="left:140px;top:218px;">15m</button>
+                  <button class="preset" data-min="25" style="left:250px;top:218px;">25m</button>
+                  <button class="preset" data-min="45" style="left:360px;top:218px;">45m</button>
 
-                  <button class="pomo-action" id="pomoStart" style="left:80px;top:240px;width:150px;height:42px;">START</button>
-                  <button class="pomo-action reset" id="pomoReset" style="left:250px;top:240px;width:150px;height:42px;">RESET</button>
+                  <button class="pomo-action" id="pomoStart" style="left:80px;top:254px;width:150px;height:38px;">START</button>
+                  <button class="pomo-action reset" id="pomoReset" style="left:250px;top:254px;width:150px;height:38px;">RESET</button>
 
-                  <div class="f1 muted nowrap" style="left:30px;top:294px;">COMPLETED SESSIONS:</div>
-                  <div class="session-dots" id="sessionDots" style="left:168px;top:298px;"></div>
+                  <div class="f1 muted nowrap" style="left:30px;top:294px;">SESSIONS</div>
+                  <div class="session-dots" id="sessionDots" style="left:202px;top:306px;width:76px;"></div>
                 </div>
               </section>
 
               <!-- ---------- PAGE 2 : ANIMATION ---------- -->
               <section class="page" data-page="2" aria-label="Animations">
-                <div class="anim-stage" id="animStage" style="left:8px;top:36px;width:464px;height:279px;">
-                  <canvas id="animCanvas" width="928" height="558"></canvas>
+                <div class="anim-stage" id="animStage" style="left:0;top:32px;width:480px;height:288px;">
+                  <canvas id="animCanvas" width="960" height="576"></canvas>
                 </div>
                 <div class="anim-hud" style="left:16px;top:282px;width:448px;height:24px;">
                   <span id="animHud">MODE: MATRIX RAIN | FPS: 60.0 | TAP SCREEN TO SWITCH ANIMATION</span>
@@ -226,7 +233,6 @@
 
               <!-- ---------- PAGE 3 : SETTINGS ---------- -->
               <section class="page" data-page="3" aria-label="Settings">
-                <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
                 <button class="settings-tab active" data-settings-tab="0" role="tab" aria-selected="true" style="left:16px;top:44px;width:220px;height:24px;">NETWORKS</button>
                 <button class="settings-tab" data-settings-tab="1" role="tab" aria-selected="false" style="left:244px;top:44px;width:220px;height:24px;">THEMES</button>
 
@@ -241,7 +247,7 @@
                   <div class="settings-viewport" id="settingsViewport" style="left:9px;top:80px;width:462px;height:210px;">
                     <div class="theme-card-list" id="themeCards"></div>
                   </div>
-                  <div class="scroll-track" style="left:465px;top:82px;width:6px;height:208px;"><i id="scrollThumb"></i></div>
+                  <div class="theme-page-indicator" id="themePageIndicator" style="left:466px;top:88px;height:196px;"></div>
                 </div>
 
                 <div class="rule" style="left:16px;top:292px;width:448px;"></div>
@@ -284,7 +290,7 @@
       <h2>Built for a desk, not a debug console.</h2>
       <p class="section-lede">
         Every pixel is drawn with TFT_eSPI primitives at 480 × 320. The interface is fully touch-driven:
-        tabs in the header, tappable cards, saved-network profiles, a scrollable theme gallery and a physical BOOT-key shortcut.
+        tabs in the header, tappable cards, saved-network profiles, a three-page theme gallery and a physical BOOT-key shortcut.
       </p>
     </div>
 
@@ -312,7 +318,7 @@
           <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <h3>Standby clock</h3>
-        <p>NTP-synced time at GMT+7 with a full-width date line and a 60-tick seconds meter that fills as each minute elapses.</p>
+        <p>NTP-synced time at GMT+7 with a full-width date line and a smooth seconds meter that fills as each minute elapses.</p>
         <span class="feature-tag">pool.ntp.org · no RTC needed</span>
       </article>
 
@@ -321,7 +327,7 @@
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/></svg>
         </div>
         <h3>Pomodoro hub</h3>
-        <p>10, 15, 25 or 45-minute presets, start/pause/reset, progress bar, session dots and a backlight-blink alarm when time is up.</p>
+        <p>10, 15, 25 or 45-minute presets, start/pause/resume/reset, a 24-block wave progress bar, session dots and a backlight-blink alarm when time is up.</p>
         <span class="feature-tag">PWM backlight alarm</span>
       </article>
 
@@ -338,8 +344,8 @@
         <div class="feature-icon" style="--icon:var(--hot)">
           <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9c0-1.1-.2-2.2-.6-3.2A6.5 6.5 0 0 1 12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/><circle cx="8.5" cy="14" r="1.1" fill="currentColor"/><circle cx="13" cy="13" r="1" fill="currentColor"/></svg>
         </div>
-        <h3>Fifteen themes</h3>
-        <p>Duo-tone, E-ink, Emerald, Dracula, Deep Ocean, Sunset, Solarized, Amber CRT, Neon Matrix, Midnight, Crimson, Maroon, Cyber Red, Ruby and Vermilion.</p>
+        <h3>Eighteen themes</h3>
+        <p>Duo-tone, E-ink, Emerald, Dracula, Deep Ocean, Sunset, Solarized, Amber CRT, Neon Matrix, Midnight, Crimson, Maroon, Cyber Red, Ruby, Vermilion, Aurora, Sakura and Copper.</p>
         <span class="feature-tag">Saved to NVS · instant repaint</span>
       </article>
     </div>
@@ -455,6 +461,6 @@
 
 </main>
 
-<script src="app.js?v=4"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

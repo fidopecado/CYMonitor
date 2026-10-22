@@ -2964,7 +2964,6 @@ void drawSettingsPage()
     drawCenteredText("TAP A NETWORK TO CONNECT  |  HOLD TO FORGET", 240, 300, 1);
   else
     drawThemeFooter();
-
   drawSettingsContent();
 }
 

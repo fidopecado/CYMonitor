@@ -5,14 +5,14 @@
   'use strict';
 
   // ------------------------------------------------------------------------
-  // 15 theme palettes, exactly as declared in main.cpp (RGB565)
+  // 18 theme palettes, exactly as declared in main.cpp (RGB565)
   // order: bg, cardBg, cardBorder, headerBg, barTrack, textWhite, textMuted,
   //        textDark, tempCool, tempWarm, tempHot, accent1, accent2, accent3,
   //        gold
   // ------------------------------------------------------------------------
   const THEMES = [
     { name: 'DUO-TONE',     c: [0x0841, 0x1082, 0x39E7, 0x0841, 0x2945, 0xFFFF, 0xAD75, 0x528A, 0x051F, 0xFD20, 0xF800, 0x051F, 0xFC40, 0x051F, 0xFC40] },
-    { name: 'E-INK',        c: [0xF7BE, 0xCE59, 0x4208, 0xDF1C, 0xD69A, 0x4A49, 0x4208, 0x8410, 0x4208, 0x2104, 0x4A49, 0x4A49, 0x31A6, 0x630C, 0x9492] },
+    { name: 'E-INK',        c: [0xF7BE, 0xE71C, 0x4208, 0xE71C, 0xC618, 0x2124, 0x4208, 0x528A, 0x2945, 0x4208, 0x4A49, 0x2124, 0x4208, 0x630C, 0x3186] },
     { name: 'EMERALD',      c: [0x0183, 0x0A26, 0x1B8A, 0x0102, 0x0A47, 0xEFEF, 0x7E31, 0x33A6, 0x07E0, 0xFDE0, 0xF9A0, 0x07E0, 0x07EF, 0x366B, 0xFFE0] },
     { name: 'DRACULA',      c: [0x280D, 0x3852, 0x6277, 0x200A, 0x4896, 0xF79E, 0x9E3B, 0x5291, 0x57FF, 0xFAAA, 0xF888, 0xFAAA, 0x57FF, 0xAF7D, 0xFEA0] },
     { name: 'DEEP OCEAN',   c: [0x000B, 0x016E, 0x0375, 0x0007, 0x0272, 0xE7FF, 0x74FE, 0x33B3, 0x07FF, 0x05BD, 0xF9E7, 0x07FF, 0x041F, 0x367F, 0x7FFF] },
@@ -26,6 +26,9 @@
     { name: 'CYBER RED',    c: [0x0000, 0x1000, 0xF800, 0x0800, 0x3000, 0xFFFF, 0xF9E7, 0x6000, 0x07E0, 0xFD20, 0xF800, 0xFA4B, 0xF800, 0xFC00, 0xFFE0] },
     { name: 'RUBY WINE',    c: [0x1002, 0x2805, 0x7809, 0x1803, 0x3807, 0xFFFE, 0xC3B2, 0x5003, 0x07E0, 0xFD20, 0xF800, 0x9805, 0xC008, 0xE80A, 0xFD60] },
     { name: 'VERMILION',    c: [0x1800, 0x2880, 0x7A00, 0x2000, 0x4100, 0xFFFF, 0xDC05, 0x5800, 0x07E0, 0xFD20, 0xF800, 0xE206, 0xF9A0, 0xFB00, 0xFFE0] },
+    { name: 'AURORA',       c: [0x000A, 0x0866, 0x1C8F, 0x0028, 0x018F, 0xE7FF, 0x74FF, 0x2C7F, 0x07FF, 0xFE60, 0xF800, 0x07F0, 0xD81F, 0x05FF, 0xFFE0] },
+    { name: 'SAKURA',       c: [0x2004, 0x3008, 0x680E, 0x2006, 0x480A, 0xFFDE, 0xF6B8, 0x9CD3, 0xAFBF, 0xFD20, 0xF800, 0xFDB8, 0xFC9F, 0xE71C, 0xFFE0] },
+    { name: 'COPPER',       c: [0x0800, 0x1880, 0x7A80, 0x1000, 0x3900, 0xFFDE, 0xDD68, 0x8C60, 0x051F, 0xFD20, 0xF800, 0xFC60, 0xFDC0, 0xE3A0, 0xFFE0] },
   ];
 
   const VAR_NAMES = ['bg', 'card', 'border', 'header', 'track', 'white', 'muted', 'dark', 'cool', 'warm', 'hot', 'a1', 'a2', 'a3', 'gold'];
@@ -37,6 +40,133 @@
     const c = (n, max) => Math.round((n * 255) / max);
     return '#' + [c(r, 31), c(g, 63), c(b, 31)].map((n) => n.toString(16).padStart(2, '0')).join('');
   };
+
+  function visibleOnDark(hex, minLuma = 150) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (luma >= minLuma) return hex;
+    const t = Math.min(1, (minLuma - luma) / Math.max(1, 255 - luma));
+    const lift = (c) => Math.round(c + (255 - c) * t);
+    return `rgb(${lift(r)}, ${lift(g)}, ${lift(b)})`;
+  }
+
+  // ------------------------------------------------------------------------
+  // site palette — mirrors the CYD theme while keeping text readable
+  // ------------------------------------------------------------------------
+  function rgbOf(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function hexOf(r, g, b) {
+    return '#' + [r, g, b].map((n) => Math.round(n).toString(16).padStart(2, '0')).join('');
+  }
+  function mixColor(a, b, t) {
+    const ca = rgbOf(a), cb = rgbOf(b);
+    return hexOf(ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t);
+  }
+  function luminance(hex) {
+    const [r, g, b] = rgbOf(hex).map((c) => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  function contrastRatio(a, b) {
+    const la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+  function ensureContrast(fg, bg, min = 4.5) {
+    if (contrastRatio(fg, bg) >= min) return fg;
+    const target = luminance(bg) > 0.45 ? '#000000' : '#ffffff';
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2;
+      if (contrastRatio(mixColor(fg, target, mid), bg) >= min) hi = mid;
+      else lo = mid;
+    }
+    return mixColor(fg, target, hi);
+  }
+  function rgba(hex, alpha) {
+    const [r, g, b] = rgbOf(hex);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function applySiteTheme(vars) {
+    if (document.body.classList.contains('app-page')) return;
+
+    const darkBg = luminance(vars.bg) <= 0.45;
+    const page = mixColor(vars.bg, darkBg ? '#000000' : '#ffffff', darkBg ? 0.2 : 0.14);
+    const isLight = luminance(page) > 0.45;
+    const baseInk = isLight ? '#141719' : '#f4f7fb';
+
+    const ink = ensureContrast(baseInk, page, 12);
+    const surface = mixColor(page, ink, isLight ? 0.055 : 0.09);
+    const surface2 = mixColor(page, ink, isLight ? 0.11 : 0.16);
+    const inkSoft = ensureContrast(mixColor(ink, page, 0.24), surface2, 5);
+    const inkDim = ensureContrast(mixColor(ink, page, 0.38), surface2, 4.5);
+    const line = mixColor(ink, page, 0.66);
+    const lineStrong = mixColor(ink, page, 0.46);
+    const brutal = ensureContrast(ink, page, 9);
+    const brutalShadow = ensureContrast(mixColor(ink, page, isLight ? 0.04 : 0.22), page, 4.5);
+    const blue = ensureContrast(vars.a1 || vars.cool, surface2, 4.5);
+    const orange = ensureContrast(vars.a2 || vars.gold, surface2, 4.5);
+    const a3 = ensureContrast(vars.a3, surface2, 4.5);
+    const onAccent = contrastRatio(blue, '#ffffff') >= contrastRatio(blue, '#000000') ? '#ffffff' : '#000000';
+    const onAccent2 = contrastRatio(orange, '#ffffff') >= contrastRatio(orange, '#000000') ? '#ffffff' : '#000000';
+    const onAccent3 = contrastRatio(a3, '#ffffff') >= contrastRatio(a3, '#000000') ? '#ffffff' : '#000000';
+    const eyebrow = ensureContrast(mixColor(blue, ink, 0.35), page, 4.5);
+    const codeInk = ensureContrast(mixColor(blue, ink, 0.2), page, 4.5);
+
+    const root = document.documentElement.style;
+    root.setProperty('--page', page);
+    root.setProperty('--surface', surface);
+    root.setProperty('--surface-2', surface2);
+    root.setProperty('--ink', ink);
+    root.setProperty('--ink-soft', inkSoft);
+    root.setProperty('--ink-dim', inkDim);
+    root.setProperty('--line', line);
+    root.setProperty('--line-strong', lineStrong);
+    root.setProperty('--brutal', brutal);
+    root.setProperty('--brutal-shadow', brutalShadow);
+    root.setProperty('--blue', blue);
+    root.setProperty('--orange', orange);
+    root.setProperty('--on-accent', onAccent);
+    root.setProperty('--on-accent-2', onAccent2);
+    root.setProperty('--on-accent-3', onAccent3);
+    root.setProperty('--nav-bg', surface);
+    root.setProperty('--nav-line', brutal);
+    root.setProperty('--glass', surface);
+    root.setProperty('--glass-strong', surface2);
+    root.setProperty('--selection', rgba(blue, 0.32));
+    root.setProperty('--strong-ink', ink);
+    root.setProperty('--hover-ink', ink);
+    root.setProperty('--chip-ink', ink);
+    root.setProperty('--stat-ink', ink);
+    root.setProperty('--eyebrow-ink', ink);
+    root.setProperty('--ghost-ink', ink);
+    root.setProperty('--step-ink', ink);
+    root.setProperty('--pin-ink', inkDim);
+    root.setProperty('--pin-strong', ink);
+    root.setProperty('--spec-ink', ink);
+    root.setProperty('--foot-ink', ink);
+    root.setProperty('--foot-code', inkSoft);
+    root.setProperty('--code-ink', codeInk);
+    root.setProperty('--code-bg', rgba(blue, 0.14));
+    root.setProperty('--code-border', rgba(blue, 0.35));
+
+    // the landing-page feature icons reference the CYD accent names
+    root.setProperty('--a1', blue);
+    root.setProperty('--a2', orange);
+    root.setProperty('--a3', a3);
+    root.setProperty('--cool', ensureContrast(vars.cool, page, 4.5));
+    root.setProperty('--warm', ensureContrast(vars.warm, page, 4.5));
+    root.setProperty('--hot', ensureContrast(vars.hot, page, 4.5));
+    root.setProperty('--gold', ensureContrast(vars.gold, page, 4.5));
+    root.colorScheme = isLight ? 'light' : 'dark';
+
+    document.body.classList.toggle('site-theme-light', isLight);
+  }
 
   const PALETTES = THEMES.map((t) => {
     const vars = {};
@@ -56,18 +186,18 @@
     page: 0,
     monitorSub: 0,
     clockSub: 0,
-    theme: 0,
+    theme: 1,
     anim: 0,
     ping: 0,
     rssi: -52,
-    pal: PALETTES[0].vars,
+    pal: PALETTES[1].vars,
     scale: 1,
     cpu: { name: 'AMD RYZEN 5 5600', temp: 47.2, load: 18.4, power: 65.3, fan: 1180 },
     gpu: { name: 'RX 6700 XT', hasHotspot: true, core: 55.6, hot: 67.2, load: 22.1, vram: 5312 },
     ram: { pct: 38.7, used: 12.4, total: 32 },
     latency: { gw: 4, srv: 14 },
     pomo: { active: false, paused: false, finished: false, minutes: 25, remaining: 0, duration: 0, endAt: 0, sessions: 0 },
-    scroll: 0,
+    themePage: 0,
     settingsTab: 0,
     activeNetwork: 0,
     networks: [
@@ -100,12 +230,20 @@
     state.theme = index;
     state.pal = t.vars;
     VAR_NAMES.forEach((name) => screen.style.setProperty('--' + name, t.vars[name]));
+    applySiteTheme(t.vars);
 
     $$('.theme-dot').forEach((d) => {
       const on = Number(d.dataset.theme) === index;
       d.classList.toggle('active', on);
       d.setAttribute('aria-pressed', String(on));
     });
+
+    const hud = $('.anim-hud');
+    if (hud) {
+      const c = visibleOnDark(t.vars.a3, 140);
+      hud.style.borderColor = c;
+      hud.style.color = c;
+    }
 
     renderThemeCards();
     drawSpark('cpuSpark');
@@ -371,13 +509,7 @@
     return new Date(d.getTime() + d.getTimezoneOffset() * 60000 + 7 * 3600000);
   }
 
-  const ticksEl = $('#ticks');
-  for (let s = 0; s < 60; s++) {
-    const tick = document.createElement('i');
-    tick.style.left = s * 7 + Math.floor(s / 10) * 4 + 'px';
-    ticksEl.appendChild(tick);
-  }
-  const tickEls = Array.from(ticksEl.children);
+  const secondsBar = $('#secondsBar');
 
   function updateClock(force) {
     const d = wibNow();
@@ -387,12 +519,22 @@
     $('#clockTime').textContent = `${hh}:${mm}:${ss}`;
     $('#clockDate').textContent =
       `${DAYS[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-    tickEls.forEach((t, i) => t.classList.toggle('on', i <= d.getSeconds()));
+    secondsBar.style.width = (d.getSeconds() / 59) * 100 + '%';
     if (force) updatePomodoro(true);
   }
 
+  const pomoBlocksHost = $('#pomoBlocks');
+  for (let i = 0; i < 24; i++) {
+    const block = document.createElement('i');
+    block.className = 'pomo-block';
+    block.style.animationDelay = (-(i * 0.075)).toFixed(3) + 's';
+    pomoBlocksHost.appendChild(block);
+  }
+  const pomoBlockEls = Array.from(pomoBlocksHost.children);
+
   function pomoSeconds() {
     const p = state.pomo;
+    if (p.finished) return 0;
     if (p.active || p.paused) return Math.ceil(p.remaining / 1000);
     return p.minutes * 60;
   }
@@ -402,42 +544,46 @@
     const secs = pomoSeconds();
     const mm = String(Math.floor(secs / 60)).padStart(2, '0');
     const ss = String(secs % 60).padStart(2, '0');
-    $('#pomoDigits').textContent = `${mm}:${ss}`;
+    const digits = $('#pomoDigits');
+    digits.textContent = `${mm}:${ss}`;
 
     const status = $('#pomoStatus');
-    if (p.finished) {
-      status.textContent = 'BREAK TIME!';
-      status.style.background = 'var(--hot)';
-      status.style.color = 'var(--white)';
-    } else if (p.active) {
-      status.textContent = 'FOCUSING';
-      status.style.background = 'var(--a1)';
-      status.style.color = 'var(--bg)';
-    } else {
-      status.textContent = 'READY';
-      status.style.background = 'var(--border)';
-      status.style.color = 'var(--muted)';
-    }
+    const stateColor = p.finished ? 'var(--hot)' : p.active ? 'var(--a1)' : p.paused ? 'var(--a2)' : 'var(--muted)';
+    status.textContent = p.finished ? 'COMPLETE' : p.active ? 'FOCUSING' : p.paused ? 'PAUSED' : 'READY';
+    status.style.color = stateColor;
+    status.style.background = 'transparent';
+    digits.style.color = p.finished ? 'var(--hot)' : p.active ? 'var(--a1)' : p.paused ? 'var(--a2)' : 'var(--white)';
 
-    const pct = p.duration > 0 && (p.active || p.paused) ? (p.remaining / p.duration) * 100 : 100;
-    $('#pomoBar').style.width = clamp(pct, 0, 100) + '%';
-    $('#pomoBar').style.background = p.finished ? 'var(--hot)' : p.active ? 'var(--a1)' : 'var(--white)';
+    let pct = p.finished ? 0 : 1;
+    if (!p.finished && p.duration > 0 && (p.active || p.paused)) pct = p.remaining / p.duration;
+    const activeBlocks = clamp(Math.ceil(pct * 24), 0, 24);
+    pomoBlocksHost.classList.toggle('running', p.active && !p.finished);
+    pomoBlocksHost.classList.toggle('paused', p.paused && !p.active);
+    pomoBlocksHost.classList.toggle('finished', p.finished);
+    pomoBlockEls.forEach((block, i) => {
+      block.classList.toggle('on', i < activeBlocks);
+      block.classList.toggle('lead', i === activeBlocks - 1 && activeBlocks > 0);
+    });
 
     const start = $('#pomoStart');
-    start.textContent = p.active ? 'PAUSE' : 'START';
+    start.textContent = p.active ? 'PAUSE' : p.paused ? 'RESUME' : 'START';
     start.style.background = p.active ? 'var(--warm)' : 'var(--cool)';
 
-    $('#sessionDots').innerHTML = '';
+    const dots = $('#sessionDots');
+    dots.innerHTML = '';
+    const shown = Math.min(p.sessions, 5);
     for (let i = 0; i < 5; i++) {
       const dot = document.createElement('i');
-      if (i < p.sessions % 6) dot.className = 'on';
-      $('#sessionDots').appendChild(dot);
+      if (i < shown) dot.className = 'on';
+      dots.appendChild(dot);
     }
 
     $$('.preset').forEach((btn) => {
       const on = Number(btn.dataset.min) === p.minutes;
-      btn.style.borderColor = on ? 'var(--gold)' : 'var(--border)';
-      btn.style.color = on ? 'var(--gold)' : 'var(--white)';
+      btn.classList.toggle('selected', on);
+      btn.style.background = on ? 'var(--a1)' : 'var(--header)';
+      btn.style.borderColor = on ? 'var(--a1)' : 'var(--border)';
+      btn.style.color = on ? 'var(--bg)' : 'var(--white)';
     });
     if (force) return;
   }
@@ -531,11 +677,17 @@
   const animCanvas = $('#animCanvas');
   const actx = animCanvas.getContext('2d');
   const ANIM_NAMES = ['MATRIX RAIN', 'STARFIELD 3D', 'BOUNCING DVD'];
-  const AW = 464, AH = 279, CX = 232, CY = 139;
+  // Animation coordinates are local to the canvas (the canvas starts at y=32 on
+  // the screen). Keep all motion inside the firmware's 42..275 screen band so
+  // nothing draws behind the footer HUD.
+  const AW = 480, AH = 288;
+  const ANIM_TOP = 10, ANIM_BOTTOM = 243;
+  const STAR_CX = 240, STAR_CY = 128;
+  const MATRIX_TOP = 12, MATRIX_BOTTOM = 246, MATRIX_CELL = 12;
 
   const matrix = [];
   const stars = [];
-  let dvd = { x: 100, y: 100, vx: 3, vy: 2, color: '#00a1ff' };
+  let dvd = { x: 100, y: 10, vx: 1, vy: 1, color: '#00a1ff' };
 
   function initAnimation() {
     state.anim %= ANIM_NAMES.length;
@@ -543,25 +695,25 @@
 
     if (state.anim === 0) {
       matrix.length = 0;
-      for (let i = 0; i < 38; i++) {
+      for (let i = 0; i < 24; i++) {
         matrix.push({
-          x: 2 + i * 12,
-          y: Math.random() * AH,
-          speed: 1.4 + Math.random() * 2.2,
-          len: 5 + Math.random() * 9,
+          x: 20 + (i * 428) / 23,
+          y: MATRIX_TOP + Math.random() * 136,
+          speed: 80 + Math.random() * 80,
+          len: 4 + Math.random() * 5,
         });
       }
     } else if (state.anim === 1) {
       stars.length = 0;
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 50; i++) {
         stars.push({
-          x: Math.random() * 2 - 1,
-          y: Math.random() * 2 - 1,
-          z: 20 + Math.random() * 280,
+          x: Math.random() * 400 - 200,
+          y: Math.random() * 300 - 150,
+          z: 10 + Math.random() * 290,
         });
       }
     } else if (state.anim === 2) {
-      dvd = { x: 100, y: 100, vx: 3, vy: 2, color: pal.a1 };
+      dvd = { x: 100, y: 10, vx: 1, vy: 1, color: visibleOnDark(pal.a1, 150) };
     }
 
     actx.setTransform(2, 0, 0, 2, 0, 0);
@@ -570,73 +722,82 @@
     updateAnimHud(60);
   }
 
-  function drawMatrix() {
+  function drawMatrix(dt) {
     const pal = state.pal;
+    const accent = visibleOnDark(pal.a3, 150);
+    const head = visibleOnDark(pal.white, 220);
     actx.fillStyle = 'rgba(0,0,0,0.17)';
     actx.fillRect(0, 0, AW, AH);
     actx.font = '11px ui-monospace, Consolas, monospace';
     actx.textAlign = 'center';
+    actx.textBaseline = 'top';
 
     const glyphs = '0123456789ABCDEFXYZ#*+<>$%&';
     for (const col of matrix) {
       const headY = col.y;
       for (let k = 0; k < col.len; k++) {
-        const gy = headY - k * 12;
-        if (gy < -12 || gy > AH) continue;
+        const gy = headY - k * MATRIX_CELL;
+        if (gy < MATRIX_TOP || gy + 11 > MATRIX_BOTTOM) continue;
         const ch = glyphs[(Math.random() * glyphs.length) | 0];
         if (k === 0) {
-          actx.fillStyle = pal.white;
+          actx.fillStyle = head;
         } else {
           actx.globalAlpha = Math.max(0.08, 1 - k / col.len);
-          actx.fillStyle = pal.a3;
+          actx.fillStyle = accent;
         }
         actx.fillText(ch, col.x, gy);
       }
       actx.globalAlpha = 1;
-      col.y += col.speed;
-      if (col.y - col.len * 12 > AH) {
-        col.y = -Math.random() * 60;
-        col.speed = 1.4 + Math.random() * 2.2;
-        col.len = 5 + Math.random() * 9;
+      col.y += col.speed * dt;
+      if (col.y - col.len * MATRIX_CELL > MATRIX_BOTTOM) {
+        col.y = MATRIX_TOP + Math.random() * 30;
+        col.speed = 80 + Math.random() * 80;
+        col.len = 4 + Math.random() * 5;
       }
     }
     actx.textAlign = 'left';
+    actx.textBaseline = 'alphabetic';
   }
 
-  function drawStars() {
+  function drawStars(dt) {
     const pal = state.pal;
-    actx.fillStyle = 'rgba(0,0,0,0.32)';
+    const near = visibleOnDark(pal.white, 220);
+    const mid = visibleOnDark(pal.a1, 170);
+    const far = visibleOnDark(pal.dark, 110);
+    actx.fillStyle = '#000';
     actx.fillRect(0, 0, AW, AH);
     for (const s of stars) {
-      const px = CX + (s.x / s.z) * 420;
-      const py = CY + (s.y / s.z) * 420;
-      if (px > 0 && px < AW && py > 0 && py < AH) {
+      const px = STAR_CX + (s.x / s.z) * 160;
+      const py = STAR_CY + (s.y / s.z) * 160;
+      if (px >= 12 && px <= 467 && py >= ANIM_TOP && py <= ANIM_BOTTOM) {
         const size = clamp((1 - s.z / 300) * 2.4, 0.6, 2.6);
-        actx.fillStyle = s.z < 90 ? pal.white : s.z < 190 ? pal.a1 : pal.dark;
+        actx.fillStyle = s.z < 100 ? near : s.z < 200 ? mid : far;
         actx.fillRect(px, py, size, size);
       }
-      s.z -= 4.2;
-      if (s.z <= 6) {
-        s.x = Math.random() * 2 - 1;
-        s.y = Math.random() * 2 - 1;
+      s.z -= 240 * dt;
+      if (s.z <= 2) {
+        s.x = Math.random() * 400 - 200;
+        s.y = Math.random() * 300 - 150;
         s.z = 300;
       }
     }
   }
 
-  function drawDvd() {
+  function drawDvd(dt) {
     const pal = state.pal;
     actx.fillStyle = '#000';
     actx.fillRect(0, 0, AW, AH);
     const w = 70, h = 32;
-    dvd.x += dvd.vx;
-    dvd.y += dvd.vy;
+    dvd.x += dvd.vx * 180 * dt;
+    dvd.y += dvd.vy * 120 * dt;
     let hit = false;
-    if (dvd.x <= 6 || dvd.x + w >= AW - 6) { dvd.vx = -dvd.vx; hit = true; }
-    if (dvd.y <= 6 || dvd.y + h >= AH - 6) { dvd.vy = -dvd.vy; hit = true; }
+    if (dvd.vx < 0 && dvd.x <= 12) { dvd.x = 12; dvd.vx = 1; hit = true; }
+    else if (dvd.vx > 0 && dvd.x + w >= AW - 12) { dvd.x = AW - 12 - w; dvd.vx = -1; hit = true; }
+    if (dvd.vy < 0 && dvd.y <= 10) { dvd.y = 10; dvd.vy = 1; hit = true; }
+    else if (dvd.vy > 0 && dvd.y + h >= 243) { dvd.y = 243 - h; dvd.vy = -1; hit = true; }
     if (hit) {
       const colors = [pal.a1, pal.a2, pal.a3, pal.gold, pal.cool, pal.warm];
-      dvd.color = colors[(Math.random() * colors.length) | 0];
+      dvd.color = visibleOnDark(colors[(Math.random() * colors.length) | 0], 150);
     }
 
     actx.save();
@@ -657,7 +818,7 @@
     actx.textBaseline = 'alphabetic';
   }
 
-  let frames = 0, fpsWindow = performance.now(), fps = 60;
+  let frames = 0, fpsWindow = performance.now(), fps = 60, lastAnimTime = 0;
 
   function updateAnimHud(fpsVal) {
     $('#animHud').textContent =
@@ -665,10 +826,12 @@
   }
 
   function animLoop(now) {
+    const dt = lastAnimTime ? Math.min((now - lastAnimTime) / 1000, 0.1) : 1 / 60;
+    lastAnimTime = now;
     if (state.page === 2) {
-      if (state.anim === 0) drawMatrix();
-      else if (state.anim === 1) drawStars();
-      else if (state.anim === 2) drawDvd();
+      if (state.anim === 0) drawMatrix(dt);
+      else if (state.anim === 1) drawStars(dt);
+      else if (state.anim === 2) drawDvd(dt);
 
       frames++;
       if (now - fpsWindow >= 1000) {
@@ -688,16 +851,15 @@
   });
 
   // ------------------------------------------------------------------------
-  // settings: saved networks + scrollable theme gallery
+  // settings: saved networks + three-page theme gallery
   // ------------------------------------------------------------------------
   const settingsViewport = $('#settingsViewport');
   const cardsHost = $('#themeCards');
   const networkGrid = $('#networkGrid');
-  const MAX_SCROLL = 382;
-  const SCROLL_TRACK_H = 208;
-  const SCROLL_THUMB_H = 73;
-  const cardRefs = [];
-  let drag = { active: false, moved: false, startY: 0, startScroll: 0 };
+  const THEME_PAGE_SIZE = 6;
+  const THEME_PAGES = Math.ceil(THEMES.length / THEME_PAGE_SIZE);
+  let lastThemeWheel = 0;
+  let drag = { active: false, moved: false, startY: 0 };
   let networkPressTimer = null;
 
   function setSettingsTab(tab) {
@@ -710,13 +872,12 @@
     $$('.settings-panel').forEach((p) => {
       p.hidden = Number(p.dataset.settingsPanel) !== tab;
     });
-    $('#settingsHint').innerHTML = tab === 0
-      ? 'TAP A NETWORK TO CONNECT&nbsp;&nbsp;|&nbsp;&nbsp;HOLD TO FORGET'
-      : 'SWIPE UP/DOWN TO SCROLL&nbsp;&nbsp;|&nbsp;&nbsp;TAP A THEME TO APPLY';
-    if (tab === 1) {
-      setScroll(state.scroll);
-    } else {
+    if (tab === 0) {
+      $('#settingsHint').textContent = 'TAP A NETWORK TO CONNECT  |  HOLD TO FORGET';
       renderNetworks();
+    } else {
+      state.themePage = 0;
+      renderThemeCards();
     }
   }
 
@@ -812,10 +973,33 @@
       <div class="strip" style="background:${v.header};border-color:${v.border};color:${v.muted}">BG CARD TXT STATUS ACC</div>`;
   }
 
+  function updateThemeHint() {
+    const action = state.themePage === 0
+      ? 'SWIPE UP FOR MORE'
+      : state.themePage === THEME_PAGES - 1
+        ? 'SWIPE DOWN FOR PREVIOUS'
+        : 'SWIPE UP/DOWN FOR MORE';
+    $('#settingsHint').textContent =
+      `${action}  |  TAP TO APPLY  |  ${state.themePage + 1}/${THEME_PAGES}`;
+  }
+
+  function renderThemePageIndicator() {
+    const host = $('#themePageIndicator');
+    host.innerHTML = '';
+    for (let p = 0; p < THEME_PAGES; p++) {
+      const seg = document.createElement('i');
+      if (p === state.themePage) seg.className = 'on';
+      host.appendChild(seg);
+    }
+  }
+
   function renderThemeCards() {
     cardsHost.innerHTML = '';
-    cardRefs.length = 0;
-    THEMES.forEach((t, i) => {
+    const first = state.themePage * THEME_PAGE_SIZE;
+    const last = Math.min(first + THEME_PAGE_SIZE, THEMES.length);
+    for (let i = first; i < last; i++) {
+      const t = THEMES[i];
+      const slot = i - first;
       const card = document.createElement('div');
       card.className = 'theme-card' + (i === state.theme ? ' selected' : '');
       card.dataset.theme = String(i);
@@ -827,42 +1011,39 @@
       card.style.background = v.card;
       card.style.borderColor = v.border;
       card.innerHTML = themeCardMarkup(t, i);
-      card.style.left = (i % 2 === 0 ? 7 : 235) + 'px';
-      card.style.top = 2 + Math.floor(i / 2) * 74 + 'px';
+      card.style.left = (slot % 2 === 0 ? 7 : 235) + 'px';
+      card.style.top = 2 + Math.floor(slot / 2) * 70 + 'px';
 
       card.addEventListener('click', (e) => {
         e.stopPropagation();
         if (drag.moved) return;
         applyTheme(i);
-        setScroll(state.scroll);
       });
       card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           applyTheme(i);
-          setScroll(state.scroll);
         }
       });
 
       cardsHost.appendChild(card);
-      cardRefs.push(card);
-    });
-    setScroll(state.scroll);
+    }
+    renderThemePageIndicator();
+    if (state.settingsTab === 1) updateThemeHint();
   }
 
-  function setScroll(next) {
-    state.scroll = clamp(next, 0, MAX_SCROLL);
-    cardRefs.forEach((card, i) => {
-      card.style.top = 2 + Math.floor(i / 2) * 74 - state.scroll + 'px';
-    });
-    $('#scrollThumb').style.height = SCROLL_THUMB_H + 'px';
-    $('#scrollThumb').style.top =
-      (state.scroll / MAX_SCROLL) * (SCROLL_TRACK_H - SCROLL_THUMB_H) + 'px';
+  function setThemePage(page) {
+    state.themePage = clamp(page, 0, THEME_PAGES - 1);
+    renderThemeCards();
   }
 
   settingsViewport.addEventListener('wheel', (e) => {
+    if (state.settingsTab !== 1) return;
     e.preventDefault();
-    setScroll(state.scroll + e.deltaY * 0.55);
+    const now = performance.now();
+    if (now - lastThemeWheel < 300) return;
+    lastThemeWheel = now;
+    setThemePage(state.themePage + (e.deltaY > 0 ? 1 : -1));
   }, { passive: false });
 
   settingsViewport.addEventListener('pointerdown', (e) => {
@@ -870,21 +1051,21 @@
     drag.active = true;
     drag.moved = false;
     drag.startY = e.clientY;
-    drag.startScroll = state.scroll;
     settingsViewport.classList.add('dragging');
   });
 
   settingsViewport.addEventListener('pointermove', (e) => {
     if (!drag.active) return;
     const dy = (e.clientY - drag.startY) / (state.scale || 1);
-    if (Math.abs(dy) > 4) drag.moved = true;
-    setScroll(drag.startScroll - dy);
+    if (Math.abs(dy) > 6) drag.moved = true;
   });
 
-  function endDrag() {
+  function endDrag(e) {
     if (!drag.active) return;
     drag.active = false;
     settingsViewport.classList.remove('dragging');
+    const dy = (e.clientY - drag.startY) / (state.scale || 1);
+    if (Math.abs(dy) > 20) setThemePage(state.themePage + (dy < 0 ? 1 : -1));
     setTimeout(() => { drag.moved = false; }, 0);
   }
   settingsViewport.addEventListener('pointerup', endDrag);
@@ -894,23 +1075,45 @@
   // external controls (quick page + theme selectors)
   // ------------------------------------------------------------------------
   const strip = $('#themeStrip');
-  THEMES.forEach((t, i) => {
-    const v = PALETTES[i].vars;
-    const b = document.createElement('button');
-    b.className = 'theme-dot';
-    b.dataset.theme = String(i);
-    b.title = t.name;
-    b.setAttribute('aria-label', 'Theme: ' + t.name);
-    b.setAttribute('aria-pressed', String(i === state.theme));
-    b.style.background = `linear-gradient(135deg, ${v.bg} 0 32%, ${v.a1} 32% 64%, ${v.a2} 64%)`;
-    b.addEventListener('click', () => applyTheme(i));
-    strip.appendChild(b);
+  if (strip) {
+    THEMES.forEach((t, i) => {
+      const v = PALETTES[i].vars;
+      const b = document.createElement('button');
+      b.className = 'theme-dot';
+      b.dataset.theme = String(i);
+      b.title = t.name;
+      b.setAttribute('aria-label', 'Theme: ' + t.name);
+      b.setAttribute('aria-pressed', String(i === state.theme));
+      b.style.setProperty('--sw-bg', v.bg);
+      b.style.setProperty('--sw-a1', v.a1);
+      b.style.setProperty('--sw-a2', v.a2);
+      b.addEventListener('click', () => applyTheme(i));
+      strip.appendChild(b);
+    });
+  }
+
+  // ------------------------------------------------------------------------
+  // in-page navigation: keep anchors reliable below the sticky header
+  // ------------------------------------------------------------------------
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  $$('a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      const hash = a.getAttribute('href');
+      if (!hash || hash === '#') return;
+      const target = $(hash);
+      if (!target) return;
+      e.preventDefault();
+      const behavior = reduceMotion.matches ? 'auto' : 'smooth';
+      if (hash === '#top') window.scrollTo({ top: 0, behavior });
+      else target.scrollIntoView({ behavior, block: 'start' });
+      history.pushState(null, '', hash);
+    });
   });
 
   // ------------------------------------------------------------------------
   // boot
   // ------------------------------------------------------------------------
-  applyTheme(0);
+  applyTheme(1);
   updateMonitor();
   updateWifiPanel(true);
   updateClock(true);
