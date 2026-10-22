@@ -24,7 +24,9 @@
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite graphSprite = TFT_eSprite(&tft);
 TFT_eSprite dvdSprite = TFT_eSprite(&tft);
+TFT_eSprite pomoBarSprite = TFT_eSprite(&tft);
 bool dvdSpriteReady = false;
+bool pomoBarSpriteReady = false;
 const int DVD_W = 70;
 const int DVD_H = 32;
 
@@ -154,7 +156,7 @@ void setServerUrl(const String &url);
 void resetTelemetry();
 
 // =========================================================================
-//  THEME SYSTEM (15 Themes)
+//  THEME SYSTEM (18 Themes)
 // =========================================================================
 struct ThemePalette
 {
@@ -166,7 +168,7 @@ struct ThemePalette
 };
 
 const ThemePalette THEME_DUOTONE = {0x0841, 0x1082, 0x39E7, 0x0841, 0x2945, 0xFFFF, 0xAD75, 0x528A, 0x051F, 0xFD20, 0xF800, 0x051F, 0xFC40, 0x051F, 0xFC40, "DUO-TONE"};
-const ThemePalette THEME_EINK = {0xF7BE, 0xCE59, 0x4208, 0xDF1C, 0xD69A, 0x4A49, 0x4208, 0x8410, 0x4208, 0x2104, 0x4A49, 0x4A49, 0x31A6, 0x630C, 0x9492, "E-INK"};
+const ThemePalette THEME_EINK = {0xF7BE, 0xE71C, 0x4208, 0xE71C, 0xC618, 0x2124, 0x4208, 0x528A, 0x2945, 0x4208, 0x4A49, 0x2124, 0x4208, 0x630C, 0x3186, "E-INK"};
 const ThemePalette THEME_EMERALD = {0x0183, 0x0A26, 0x1B8A, 0x0102, 0x0A47, 0xEFEF, 0x7E31, 0x33A6, 0x07E0, 0xFDE0, 0xF9A0, 0x07E0, 0x07EF, 0x366B, 0xFFE0, "EMERALD"};
 const ThemePalette THEME_DRACULA = {0x280D, 0x3852, 0x6277, 0x200A, 0x4896, 0xF79E, 0x9E3B, 0x5291, 0x57FF, 0xFAAA, 0xF888, 0xFAAA, 0x57FF, 0xAF7D, 0xFEA0, "DRACULA"};
 const ThemePalette THEME_OCEAN = {0x000B, 0x016E, 0x0375, 0x0007, 0x0272, 0xE7FF, 0x74FE, 0x33B3, 0x07FF, 0x05BD, 0xF9E7, 0x07FF, 0x041F, 0x367F, 0x7FFF, "DEEP OCEAN"};
@@ -180,14 +182,18 @@ const ThemePalette THEME_MAROON = {0x1000, 0x2802, 0x6004, 0x1801, 0x4002, 0xFFF
 const ThemePalette THEME_CYBER_RED = {0x0000, 0x1000, 0xF800, 0x0800, 0x3000, 0xFFFF, 0xF9E7, 0x6000, 0x07E0, 0xFD20, 0xF800, 0xFA4B, 0xF800, 0xFC00, 0xFFE0, "CYBER RED"};
 const ThemePalette THEME_RUBY = {0x1002, 0x2805, 0x7809, 0x1803, 0x3807, 0xFFFE, 0xC3B2, 0x5003, 0x07E0, 0xFD20, 0xF800, 0x9805, 0xC008, 0xE80A, 0xFD60, "RUBY WINE"};
 const ThemePalette THEME_VERMILION = {0x1800, 0x2880, 0x7A00, 0x2000, 0x4100, 0xFFFF, 0xDC05, 0x5800, 0x07E0, 0xFD20, 0xF800, 0xE206, 0xF9A0, 0xFB00, 0xFFE0, "VERMILION"};
+const ThemePalette THEME_AURORA = {0x000A, 0x0866, 0x1C8F, 0x0028, 0x018F, 0xE7FF, 0x74FF, 0x2C7F, 0x07FF, 0xFE60, 0xF800, 0x07F0, 0xD81F, 0x05FF, 0xFFE0, "AURORA"};
+const ThemePalette THEME_SAKURA = {0x2004, 0x3008, 0x680E, 0x2006, 0x480A, 0xFFDE, 0xF6B8, 0x9CD3, 0xAFBF, 0xFD20, 0xF800, 0xFDB8, 0xFC9F, 0xE71C, 0xFFE0, "SAKURA"};
+const ThemePalette THEME_COPPER = {0x0800, 0x1880, 0x7A80, 0x1000, 0x3900, 0xFFDE, 0xDD68, 0x8C60, 0x051F, 0xFD20, 0xF800, 0xFC60, 0xFDC0, 0xE3A0, 0xFFE0, "COPPER"};
 
 ThemePalette T = THEME_DUOTONE;
 int selectedTheme = 0;
-const int TOTAL_THEMES = 15;
+const int TOTAL_THEMES = 18;
 const ThemePalette *ALL_THEMES[TOTAL_THEMES] = {
     &THEME_DUOTONE, &THEME_EINK, &THEME_EMERALD, &THEME_DRACULA, &THEME_OCEAN,
     &THEME_SUNSET, &THEME_SOLAR, &THEME_AMBER, &THEME_MATRIX, &THEME_MIDNIGHT,
-    &THEME_CRIMSON, &THEME_MAROON, &THEME_CYBER_RED, &THEME_RUBY, &THEME_VERMILION};
+    &THEME_CRIMSON, &THEME_MAROON, &THEME_CYBER_RED, &THEME_RUBY, &THEME_VERMILION,
+    &THEME_AURORA, &THEME_SAKURA, &THEME_COPPER};
 
 // Theme browser: six fully visible cards per page (3 rows x 2 columns).
 const int THEME_COLS = 2;
@@ -195,6 +201,49 @@ const int THEME_ROWS = 3;
 const int THEME_PAGE_SIZE = THEME_COLS * THEME_ROWS;
 const int THEME_PAGES = (TOTAL_THEMES + THEME_PAGE_SIZE - 1) / THEME_PAGE_SIZE;
 int themePage = 0;
+
+// Pick readable foreground text for an arbitrary UI background. This keeps
+// light themes (E-INK) and dark themes both legible on cards/badges.
+uint8_t colorLuma(uint16_t color)
+{
+  int r = (color >> 11) & 0x1F;
+  int g = (color >> 5) & 0x3F;
+  int b = color & 0x1F;
+  int r8 = (r * 255) / 31;
+  int g8 = (g * 255) / 63;
+  int b8 = (b * 255) / 31;
+  return (uint8_t)((r8 * 30 + g8 * 59 + b8 * 11) / 100);
+}
+
+uint16_t contrastText(uint16_t bg)
+{
+  int lb = colorLuma(bg);
+  int lw = colorLuma(T.textWhite);
+  int ld = colorLuma(T.bg);
+  return (abs(lb - lw) >= abs(lb - ld)) ? T.textWhite : T.bg;
+}
+
+// The animation page always sits on black. Light themes such as E-INK have
+// dark accents that would disappear there, so lift their brightest channel
+// until the colour is readable while preserving its hue.
+uint16_t ensureVisibleOnDark(uint16_t color, uint8_t target = 140)
+{
+  int r = (color >> 11) & 0x1F;
+  int g = (color >> 5) & 0x3F;
+  int b = color & 0x1F;
+  int r8 = (r * 255) / 31;
+  int g8 = (g * 255) / 63;
+  int b8 = (b * 255) / 31;
+  int maxv = max(r8, max(g8, b8));
+  if (maxv >= target)
+    return color;
+
+  int t = (maxv == 0) ? 255 : ((target - maxv) * 255) / (255 - maxv);
+  r8 += ((255 - r8) * t) / 255;
+  g8 += ((255 - g8) * t) / 255;
+  b8 += ((255 - b8) * t) / 255;
+  return (uint16_t)(((r8 >> 3) << 11) | ((g8 >> 2) << 5) | (b8 >> 3));
+}
 
 // =========================================================================
 //  DATA BUFFERS
@@ -219,8 +268,8 @@ const char *animNames[3] = {"MATRIX RAIN", "STARFIELD 3D", "BOUNCING DVD"};
 // Speeds are in pixels/second, so the rain stays calm at any frame rate.
 #define MATRIX_TRAIL_MIN 4
 #define MATRIX_TRAIL_MAX 8
-#define MATRIX_SPEED_MIN 60
-#define MATRIX_SPEED_MAX 130
+#define MATRIX_SPEED_MIN 80
+#define MATRIX_SPEED_MAX 160
 float matrixY[MATRIX_COLS];
 int matrixSpeed[MATRIX_COLS];
 int matrixLen[MATRIX_COLS];
@@ -896,12 +945,12 @@ void drawFeedStatus(int x, int y)
 
 void drawGpuHotspot(const LiveData &data)
 {
-  uint16_t bg = (data.gpuHot >= 85.0f) ? T.tempHot : T.cardBorder;
+  uint16_t bg = (data.gpuHot >= 85.0f) ? T.tempHot : T.headerBg;
   tft.fillRoundRect(368, 43, 96, 18, 4, bg);
   char text[20];
   snprintf(text, sizeof(text), "HOT: %.1fC", data.gpuHot);
   tft.setTextFont(1);
-  tft.setTextColor((data.gpuHot >= 85.0f) ? T.textWhite : T.gold, bg);
+  tft.setTextColor(contrastText(bg), bg);
   drawCenteredText(text, 416, 52, 1);
 }
 
@@ -1477,17 +1526,18 @@ void httpFetchTask(void *pvParameters)
 // =========================================================================
 void drawHeaderTabs()
 {
-  tft.fillRect(0, 0, 480, 32, T.headerBg);
-  tft.drawFastHLine(0, 32, 480, T.cardBorder);
+  tft.fillRect(0, 0, 480, 32, T.bg);
+  // Bottom border of the header bar; individual tabs paint over their span.
+  tft.drawFastHLine(0, 31, 480, T.cardBorder);
 
   const char *tabNames[4] = {"MONITOR", "CLOCK", "ANIMATION", "SETTINGS"};
   uint16_t tabAccents[4] = {T.accent1, T.accent2, T.tempCool, T.gold};
 
-  const int tabX0 = 2;
-  const int tabY = 4;
+  const int tabX0 = 0;
+  const int tabY = 0;
   const int tabW = 92;
-  const int tabH = 26;
-  const int tabGap = 2;
+  const int tabH = 32;
+  const int tabGap = 0;
 
   for (int i = 0; i < TOTAL_PAGES; i++)
   {
@@ -1495,14 +1545,15 @@ void drawHeaderTabs()
 
     if (i == currentPage)
     {
-      tft.fillRect(tx, tabY, tabW, 28, T.cardBg);
-      tft.drawRect(tx, tabY, tabW, 28, T.cardBorder);
+      tft.fillRect(tx, tabY, tabW, tabH, T.bg);
+      tft.drawRect(tx, tabY, tabW, tabH, T.cardBorder);
       tft.fillRect(tx + 1, tabY, tabW - 2, 3, tabAccents[i]);
-      tft.drawFastHLine(tx + 1, 32, tabW - 2, T.cardBg);
+      // Drop the bottom border so the selected tab merges with the page below.
+      tft.drawFastHLine(tx, 31, tabW, T.bg);
 
       tft.setTextFont(2);
-      tft.setTextColor(T.textWhite, T.cardBg);
-      drawCenteredText(tabNames[i], tx + tabW / 2, tabY + 14, 2);
+      tft.setTextColor(T.textWhite, T.bg);
+      drawCenteredText(tabNames[i], tx + tabW / 2, tabY + 16, 2);
     }
     else
     {
@@ -1519,7 +1570,7 @@ void drawHeaderTabs()
 
 void updateHeaderWifi()
 {
-  int x = 383, y = 9;
+  int x = 383, y = 10;
   long rssi = WiFi.RSSI();
   bool connected = (WiFi.status() == WL_CONNECTED);
 
@@ -1536,7 +1587,9 @@ void updateHeaderWifi()
       bars = 1;
   }
 
-  tft.fillRect(x - 2, 0, 92, 32, T.headerBg);
+  tft.fillRect(x - 2, 0, 92, 32, T.bg);
+  // Restore the header bottom border erased by the fill above.
+  tft.drawFastHLine(x - 2, 31, 92, T.cardBorder);
 
   for (int i = 0; i < 4; i++)
   {
@@ -1545,7 +1598,7 @@ void updateHeaderWifi()
   }
 
   tft.setTextFont(1);
-  tft.setTextColor(T.textMuted, T.headerBg);
+  tft.setTextColor(T.textMuted, T.bg);
   tft.setCursor(x + 24, y + 1);
   if (connected)
     tft.printf("%ddB", (int)rssi);
@@ -1978,6 +2031,170 @@ void updateMonitorData()
   }
 }
 
+const char *pomodoroStateLabel()
+{
+  if (pomodoroFinished)
+    return "COMPLETE";
+  if (pomodoroActive)
+    return "FOCUSING";
+  if (pomodoroPaused)
+    return "PAUSED";
+  return "READY";
+}
+
+uint16_t pomodoroStateColor()
+{
+  if (pomodoroFinished)
+    return T.tempHot;
+  if (pomodoroActive)
+    return T.accent1;
+  if (pomodoroPaused)
+    return T.accent2;
+  return T.textMuted;
+}
+
+uint16_t pomodoroTimeColor()
+{
+  if (pomodoroFinished)
+    return T.tempHot;
+  if (pomodoroActive)
+    return T.accent1;
+  if (pomodoroPaused)
+    return T.accent2;
+  return T.textWhite;
+}
+
+void drawClockTopBar(bool pomodoroMode)
+{
+  tft.setTextDatum(TL_DATUM);
+  if (!pomodoroMode)
+  {
+    tft.fillRect(20, 44, 3, 26, T.accent1);
+    tft.setTextFont(2);
+    tft.setTextColor(T.textWhite, T.bg);
+    tft.drawString("STANDBY CLOCK", 30, 47);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.bg);
+    tft.drawString("NTP SYNCED  |  GMT+7", 30, 65);
+
+    tft.setTextDatum(MR_DATUM);
+    tft.setTextFont(2);
+    tft.setTextColor(T.accent1, T.bg);
+    tft.drawString("POMODORO >", 462, 55);
+    tft.drawFastHLine(336, 68, 126, T.accent1);
+  }
+  else
+  {
+    tft.fillRect(20, 44, 3, 26, T.accent2);
+    tft.setTextFont(2);
+    tft.setTextColor(T.textWhite, T.bg);
+    tft.drawString("POMODORO", 30, 47);
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.bg);
+    tft.drawString("FOCUS TIMER", 30, 65);
+
+    tft.setTextDatum(MR_DATUM);
+    tft.setTextFont(2);
+    tft.setTextColor(T.accent1, T.bg);
+    tft.drawString("< CLOCK", 462, 55);
+    tft.drawFastHLine(376, 68, 86, T.accent1);
+  }
+  tft.drawFastHLine(20, 78, 440, T.cardBorder);
+}
+
+void drawPomodoroPresets()
+{
+  const int values[4] = {10, 15, 25, 45};
+  tft.setTextDatum(MC_DATUM);
+  for (int i = 0; i < 4; i++)
+  {
+    int bx = 30 + i * 110;
+    bool selected = (pomodoroMinutes == values[i]);
+    uint16_t bg = selected ? T.accent1 : T.headerBg;
+    tft.fillRoundRect(bx, 218, 90, 28, 6, bg);
+    tft.drawRoundRect(bx, 218, 90, 28, 6, selected ? T.accent1 : T.cardBorder);
+    tft.setTextFont(2);
+    tft.setTextColor(selected ? T.bg : T.textWhite, bg);
+    char label[8];
+    snprintf(label, sizeof(label), "%dm", values[i]);
+    tft.drawString(label, bx + 45, 232);
+  }
+}
+
+void drawPomodoroStartButton()
+{
+  uint16_t startBg = pomodoroActive ? T.tempWarm : T.tempCool;
+  tft.fillRoundRect(80, 254, 150, 38, 6, startBg);
+  tft.drawRoundRect(80, 254, 150, 38, 6, T.cardBorder);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextFont(4);
+  tft.setTextColor(T.bg, startBg);
+  const char *label = pomodoroActive ? "PAUSE" : (pomodoroPaused ? "RESUME" : "START");
+  tft.drawString(label, 155, 276);
+}
+
+void drawPomodoroBar(float pct, uint16_t color, bool animate)
+{
+  // 24 chunky blocks read like a sideways stack and never crowd the timer.
+  // Draw into a sprite so the 30 FPS wave does not flicker or tear.
+  const int blockW = 12;
+  const int blockH = 18;
+  const int gap = 3;
+  const int startX = 2;   // local to the 360x22 sprite
+  const int y = 2;
+  const int blocks = 24;
+  int activeBlocks = constrain((int)ceilf(pct * (float)blocks), 0, blocks);
+  float phase = (float)millis() / 700.0f;
+
+  if (pomoBarSpriteReady)
+    pomoBarSprite.fillSprite(T.bg);
+  else
+    tft.fillRect(60, 172, 360, 22, T.bg);
+
+  auto fillBarRect = [&](int bx, int by, int bw, int bh, uint16_t c)
+  {
+    if (pomoBarSpriteReady)
+      pomoBarSprite.fillRect(bx, by, bw, bh, c);
+    else
+      tft.fillRect(60 + bx, 172 + by, bw, bh, c);
+  };
+
+  for (int i = 0; i < blocks; i++)
+  {
+    int x = startX + i * (blockW + gap);
+    if (i < activeBlocks)
+    {
+      int h = blockH;
+      if (animate)
+      {
+        float wave = sinf(phase + i * 0.55f);
+        h = 14 + (int)((wave + 1.0f) * 2.0f);
+      }
+      fillBarRect(x, y + blockH - h, blockW, h,
+                  (i == activeBlocks - 1) ? T.gold : color);
+    }
+    else
+      fillBarRect(x, y, blockW, blockH, T.barTrack);
+  }
+
+  if (pomoBarSpriteReady)
+    pomoBarSprite.pushSprite(60, 172);
+}
+
+void drawPomodoroSessions()
+{
+  tft.fillRect(202, 306, 76, 14, T.bg);
+  int shown = min(pomodoroSessionsCompleted, 5);
+  for (int d = 0; d < 5; d++)
+  {
+    int dotX = 212 + d * 14;
+    if (d < shown)
+      tft.fillCircle(dotX, 312, 3, T.gold);
+    else
+      tft.drawCircle(dotX, 312, 3, T.cardBorder);
+  }
+}
+
 void drawClockPage()
 {
   forceSubPageRefresh = true;
@@ -1986,75 +2203,56 @@ void drawClockPage()
 
   if (clockSubPage == 0)
   {
-    tft.fillRoundRect(16, 44, 110, 24, 4, T.accent1);
-    tft.setTextFont(2);
-    tft.setTextColor(T.bg, T.accent1);
-    tft.drawString("STANDBY CLOCK", 71, 56);
-    tft.fillRoundRect(134, 44, 94, 24, 4, T.headerBg);
-    tft.drawRoundRect(134, 44, 94, 24, 4, T.cardBorder);
+    drawClockTopBar(false);
+    tft.setTextDatum(MC_DATUM);
     tft.setTextFont(1);
-    tft.setTextColor(T.gold, T.headerBg);
-    tft.drawString("NTP: GMT+7", 181, 56);
-    tft.fillRoundRect(320, 44, 144, 24, 4, T.accent2);
-    tft.setTextFont(2);
-    tft.setTextColor(T.bg, T.accent2);
-    tft.drawString("POMODORO HUB >", 392, 56);
-    tft.drawFastHLine(20, 78, 440, T.cardBorder);
+    tft.setTextColor(T.textMuted, T.bg);
+    tft.drawString("LOCAL TIME", 240, 100);
+    tft.fillRect(220, 230, 40, 2, T.accent1);
+    tft.fillRoundRect(20, 256, 440, 8, 4, T.barTrack);
+
     tft.setTextDatum(TL_DATUM);
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.bg);
-    tft.drawString("REALTIME SECONDS PROGRESS METER", 20, 252);
+    tft.drawString("SECONDS", 20, 280);
+    tft.setTextDatum(MR_DATUM);
+    tft.drawString("GMT+7", 460, 280);
   }
   else
   {
-    tft.fillRoundRect(16, 44, 120, 24, 4, T.accent2);
-    tft.setTextFont(2);
-    tft.setTextColor(T.bg, T.accent2);
-    tft.drawString("POMODORO HUB", 76, 56);
-    tft.fillRoundRect(336, 44, 128, 24, 4, T.accent1);
-    tft.setTextFont(2);
-    tft.setTextColor(T.bg, T.accent1);
-    tft.drawString("< CLOCK MODE", 400, 56);
-    tft.drawFastHLine(20, 78, 440, T.cardBorder);
-    tft.fillRoundRect(30, 95, 46, 46, 6, T.headerBg);
-    tft.drawRoundRect(30, 95, 46, 46, 6, T.cardBorder);
-    tft.setTextFont(4);
-    tft.setTextColor(T.textWhite, T.headerBg);
-    tft.drawString("-", 53, 118);
-
-    tft.fillRoundRect(404, 95, 46, 46, 6, T.headerBg);
-    tft.drawRoundRect(404, 95, 46, 46, 6, T.cardBorder);
-    tft.setTextFont(4);
-    tft.setTextColor(T.textWhite, T.headerBg);
-    tft.drawString("+", 427, 118);
-
-    const char *presetLabels[4] = {"10m", "15m", "25m", "45m"};
-    for (int i = 0; i < 4; i++)
-    {
-      int bx = 30 + i * 110;
-      tft.fillRoundRect(bx, 182, 90, 32, 6, T.headerBg);
-      tft.drawRoundRect(bx, 182, 90, 32, 6, T.cardBorder);
-      tft.setTextFont(2);
-      tft.setTextColor(T.textWhite, T.headerBg);
-      tft.drawString(presetLabels[i], bx + 45, 198);
-    }
-
-    uint16_t startBg = pomodoroActive ? T.tempWarm : T.tempCool;
-    tft.fillRoundRect(80, 240, 150, 42, 6, startBg);
-    tft.setTextFont(4);
-    tft.setTextColor(T.bg, startBg);
-    tft.drawString(pomodoroActive ? "PAUSE" : "START", 155, 261);
-
-    tft.fillRoundRect(250, 240, 150, 42, 6, T.headerBg);
-    tft.drawRoundRect(250, 240, 150, 42, 6, T.cardBorder);
-    tft.setTextFont(4);
-    tft.setTextColor(T.tempHot, T.headerBg);
-    tft.drawString("RESET", 325, 261);
-
-    tft.setTextDatum(TL_DATUM);
+    drawClockTopBar(true);
+    tft.setTextDatum(MC_DATUM);
     tft.setTextFont(1);
     tft.setTextColor(T.textMuted, T.bg);
-    tft.drawString("COMPLETED SESSIONS:", 30, 294);
+    tft.drawString("REMAINING", 240, 94);
+
+    tft.fillCircle(62, 132, 18, T.headerBg);
+    tft.drawCircle(62, 132, 18, T.cardBorder);
+    tft.setTextFont(4);
+    tft.setTextColor(T.textWhite, T.headerBg);
+    tft.drawString("-", 62, 132);
+
+    tft.fillCircle(418, 132, 18, T.headerBg);
+    tft.drawCircle(418, 132, 18, T.cardBorder);
+    tft.setTextColor(T.textWhite, T.headerBg);
+    tft.drawString("+", 418, 132);
+
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.bg);
+    tft.drawString("SESSION", 240, 164);
+
+    drawPomodoroPresets();
+
+    tft.fillRoundRect(250, 254, 150, 38, 6, T.headerBg);
+    tft.drawRoundRect(250, 254, 150, 38, 6, T.cardBorder);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextFont(4);
+    tft.setTextColor(T.tempHot, T.headerBg);
+    tft.drawString("RESET", 325, 276);
+
+    tft.setTextFont(1);
+    tft.setTextColor(T.textMuted, T.bg);
+    tft.drawString("SESSIONS", 240, 298);
   }
   updateClockPage(true);
 }
@@ -2065,7 +2263,10 @@ void updateClockPage(bool secondChanged)
   time(&now);
   struct tm timeinfo;
   localtime_r(&now, &timeinfo);
-  if (timeinfo.tm_year < 120 && !getLocalTime(&timeinfo, 0))
+  bool timeValid = (timeinfo.tm_year >= 120);
+  if (!timeValid)
+    timeValid = getLocalTime(&timeinfo, 0);
+  if (clockSubPage == 0 && !timeValid)
     return;
 
   if (pomodoroActive)
@@ -2094,7 +2295,7 @@ void updateClockPage(bool secondChanged)
       snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
       tft.setTextFont(7);
       tft.setTextColor(T.accent1, T.bg);
-      tft.drawString(timeStr, 240, 130);
+      tft.drawString(timeStr, 240, 145);
 
       static int lastMday = -1;
       if (timeinfo.tm_mday != lastMday || forceSubPageRefresh)
@@ -2106,74 +2307,85 @@ void updateClockPage(bool secondChanged)
         snprintf(dateStr, sizeof(dateStr), "%s, %02d %s %04d", days[timeinfo.tm_wday], timeinfo.tm_mday, months[timeinfo.tm_mon], timeinfo.tm_year + 1900);
         tft.setTextFont(4);
         tft.setTextColor(T.gold, T.bg);
-        tft.drawString(dateStr, 240, 201);
+        tft.drawString(dateStr, 240, 203);
       }
 
-      int barStartX = 20, barY = 270;
-      for (int s = 0; s < 60; s++)
+      tft.fillRoundRect(20, 256, 440, 8, 4, T.barTrack);
+      int barW = (440 * timeinfo.tm_sec) / 59;
+      if (barW > 0)
       {
-        int sx = barStartX + s * 7 + (s / 10) * 4;
-        tft.fillRect(sx, barY, 5, 14, (s <= timeinfo.tm_sec) ? T.accent1 : T.barTrack);
+        if (barW < 8)
+          barW = 8;
+        tft.fillRoundRect(20, 256, barW, 8, 4, T.accent1);
       }
     }
   }
   else
   {
     static int lastPomoSecRemaining = -1, lastPomoMinVal = -1, lastPomoSessions = -1;
-    static bool lastPomoActive = false, lastPomoFinished = false;
+    static bool lastPomoActive = false, lastPomoPaused = false, lastPomoFinished = false;
 
-    int currentSecRemaining = (pomodoroActive || pomodoroPaused) ? (int)((pomodoroRemainingMs + 999) / 1000) : (pomodoroMinutes * 60);
+    int currentSecRemaining;
+    if (pomodoroFinished)
+      currentSecRemaining = 0;
+    else if (pomodoroActive || pomodoroPaused)
+      currentSecRemaining = (int)((pomodoroRemainingMs + 999) / 1000);
+    else
+      currentSecRemaining = pomodoroMinutes * 60;
 
-    bool stateChanged = (pomodoroActive != lastPomoActive) || (pomodoroFinished != lastPomoFinished) ||
-                        (pomodoroMinutes != lastPomoMinVal) || (currentSecRemaining != lastPomoSecRemaining) || forceSubPageRefresh;
+    bool modeChanged = (pomodoroActive != lastPomoActive) ||
+                       (pomodoroPaused != lastPomoPaused) ||
+                       (pomodoroFinished != lastPomoFinished) ||
+                       forceSubPageRefresh;
+    bool timeChanged = (currentSecRemaining != lastPomoSecRemaining) || modeChanged;
+    bool presetChanged = (pomodoroMinutes != lastPomoMinVal) || forceSubPageRefresh;
+    bool sessionsChanged = (pomodoroSessionsCompleted != lastPomoSessions) || forceSubPageRefresh;
 
-    if (stateChanged)
+    if (modeChanged)
     {
-      lastPomoActive = pomodoroActive;
-      lastPomoFinished = pomodoroFinished;
-      lastPomoMinVal = pomodoroMinutes;
-      lastPomoSecRemaining = currentSecRemaining;
-
-      uint16_t badgeBg = pomodoroFinished ? T.tempHot : (pomodoroActive ? T.accent1 : T.cardBorder);
-      tft.fillRoundRect(144, 44, 184, 24, 4, badgeBg);
+      tft.fillRect(160, 44, 160, 24, T.bg);
+      tft.setTextDatum(MC_DATUM);
       tft.setTextFont(2);
-      tft.setTextColor(pomodoroFinished ? T.textWhite : (pomodoroActive ? T.bg : T.textMuted), badgeBg);
-      tft.drawString(pomodoroFinished ? "BREAK TIME!" : (pomodoroActive ? "FOCUSING" : "READY"), 236, 56);
+      tft.setTextColor(pomodoroStateColor(), T.bg);
+      tft.drawString(pomodoroStateLabel(), 240, 55);
+      drawPomodoroStartButton();
+    }
 
+    if (timeChanged)
+    {
       char pomoStr[16];
-      if (pomodoroActive || pomodoroPaused)
+      if (pomodoroActive || pomodoroPaused || pomodoroFinished)
         snprintf(pomoStr, sizeof(pomoStr), "%02d:%02d", currentSecRemaining / 60, currentSecRemaining % 60);
       else
         snprintf(pomoStr, sizeof(pomoStr), "%02d:00", pomodoroMinutes);
 
-      uint16_t pomoColor = pomodoroFinished ? T.tempHot : (pomodoroActive ? T.accent1 : T.textWhite);
       tft.setTextFont(7);
-      tft.setTextColor(pomoColor, T.bg);
-      tft.drawString(pomoStr, 240, 118);
-
-      float pct = (pomodoroDurationMs > 0 && (pomodoroActive || pomodoroPaused)) ? (float)pomodoroRemainingMs / (float)pomodoroDurationMs : 1.0;
-      drawMiniBar(90, 156, 300, 8, pct * 100.0, 100.0, pomoColor);
-
-      uint16_t startBg = pomodoroActive ? T.tempWarm : T.tempCool;
-      tft.fillRoundRect(80, 240, 150, 42, 6, startBg);
-      tft.setTextFont(4);
-      tft.setTextColor(T.bg, startBg);
-      tft.drawString(pomodoroActive ? "PAUSE" : "START", 155, 261);
-
-      if (pomodoroSessionsCompleted != lastPomoSessions || forceSubPageRefresh)
-      {
-        lastPomoSessions = pomodoroSessionsCompleted;
-        tft.fillRect(160, 292, 120, 14, T.bg);
-        for (int d = 0; d < 5; d++)
-        {
-          int dotX = 168 + d * 20;
-          if (d < pomodoroSessionsCompleted % 6)
-            tft.fillCircle(dotX, 298, 5, T.gold);
-          else
-            tft.drawCircle(dotX, 298, 5, T.cardBorder);
-        }
-      }
+      tft.setTextColor(pomodoroTimeColor(), T.bg);
+      tft.drawString(pomoStr, 240, 132);
     }
+
+    float pct = pomodoroFinished ? 0.0f : 1.0f;
+    if (!pomodoroFinished && pomodoroDurationMs > 0 && (pomodoroActive || pomodoroPaused))
+      pct = (float)pomodoroRemainingMs / (float)pomodoroDurationMs;
+    uint16_t barColor = pomodoroFinished ? T.tempHot
+                        : (pomodoroActive ? T.accent1
+                        : (pomodoroPaused ? T.accent2 : T.accent1));
+    if (pomodoroActive)
+      drawPomodoroBar(pct, barColor, true);   // moving block wave while running
+    else if (timeChanged)
+      drawPomodoroBar(pct, barColor, false);
+
+    if (presetChanged)
+      drawPomodoroPresets();
+
+    if (sessionsChanged)
+      drawPomodoroSessions();
+
+    lastPomoActive = pomodoroActive;
+    lastPomoPaused = pomodoroPaused;
+    lastPomoFinished = pomodoroFinished;
+    lastPomoMinVal = pomodoroMinutes;
+    lastPomoSecRemaining = currentSecRemaining;
   }
   forceSubPageRefresh = false;
   tft.setTextDatum(TL_DATUM);
@@ -2196,7 +2408,7 @@ void initAnimation()
 {
   tft.fillRect(0, 32, 480, 288, 0x0000);
   tft.fillRect(16, 282, 448, 24, 0x0821);
-  tft.drawRect(16, 282, 448, 24, T.accent3);
+  tft.drawRect(16, 282, 448, 24, ensureVisibleOnDark(T.accent3, 140));
 
   if (currentAnim == 0)
   {
@@ -2224,7 +2436,7 @@ void initAnimation()
     dvdVY = 1;
     dvdAccumX = 0.0f;
     dvdAccumY = 0.0f;
-    dvdColor = T.accent1;
+    dvdColor = ensureVisibleOnDark(T.accent1, 150);
     buildDvdSprite();
   }
   animFrameCount = 0;
@@ -2250,6 +2462,7 @@ void renderMatrixFrame(float dt)
 
   // Build a separate gradient for each possible trail length so every column
   // fades naturally regardless of its randomized length.
+  const uint16_t matrixAccent = ensureVisibleOnDark(T.accent3, 150);
   uint16_t trailColors[MATRIX_TRAIL_MAX + 1][MATRIX_TRAIL_MAX];
   for (int len = MATRIX_TRAIL_MIN; len <= MATRIX_TRAIL_MAX; len++)
   {
@@ -2257,7 +2470,7 @@ void renderMatrixFrame(float dt)
     const int shadeStep = 180 / max(1, len - 2);
     for (int j = 1; j < len; j++)
     {
-      trailColors[len][j] = scaleColor565(T.accent3, 255 - (j - 1) * shadeStep);
+      trailColors[len][j] = scaleColor565(matrixAccent, 255 - (j - 1) * shadeStep);
       if (trailColors[len][j] == 0x0000)
         trailColors[len][j] = 0x0020;
     }
@@ -2319,6 +2532,8 @@ void renderMatrixFrame(float dt)
 
 void renderStarfieldFrame(float dt)
 {
+  const uint16_t midStar = ensureVisibleOnDark(T.accent1, 170);
+  const uint16_t farStar = ensureVisibleOnDark(T.textDark, 110);
   tft.startWrite();
   for (int i = 0; i < NUM_STARS; i++)
   {
@@ -2339,7 +2554,7 @@ void renderStarfieldFrame(float dt)
     int newPy = 160 + (int)(stars[i].y / stars[i].z * 160.0f);
     if (newPx >= 12 && newPx <= 467 && newPy >= 42 && newPy <= 275)
     {
-      uint16_t col = (stars[i].z < 100) ? TFT_WHITE : ((stars[i].z < 200) ? T.accent1 : T.textDark);
+      uint16_t col = (stars[i].z < 100) ? TFT_WHITE : ((stars[i].z < 200) ? midStar : farStar);
       tft.drawFastHLine(newPx, newPy, 2, col);
     }
   }
@@ -2390,7 +2605,7 @@ void renderDvdFrame(float dt)
   if (hit)
   {
     uint16_t colors[] = {T.accent1, T.accent2, T.accent3, T.gold, T.tempCool, T.tempWarm};
-    dvdColor = colors[random(0, 6)];
+    dvdColor = ensureVisibleOnDark(colors[random(0, 6)], 150);
     buildDvdSprite();
   }
 
@@ -2470,7 +2685,7 @@ void renderAnimationFrame()
   {
     lastHudTime = now;
     tft.setTextFont(1);
-    tft.setTextColor(T.accent3, 0x0821);
+    tft.setTextColor(ensureVisibleOnDark(T.accent3, 140), 0x0821);
     tft.setCursor(24, 290);
     tft.printf("MODE: %s | FPS: %.1f | TAP SCREEN TO SWITCH ANIMATION", animNames[currentAnim], measuredFps);
   }
@@ -2588,7 +2803,7 @@ void drawThemeCard(int index, int sx, int sy)
   const int sw = 220;
   const int sh = 66;
 
-  tft.fillRect(sx, sy, sw, sh, th->cardBg);
+  tft.fillRoundRect(sx, sy, sw, sh, 6, th->cardBg);
   uint16_t borderColor = isSelected ? T.gold : th->cardBorder;
   tft.drawRoundRect(sx, sy, sw, sh, 6, borderColor);
   if (isSelected)
@@ -2825,6 +3040,11 @@ void setup()
   if (!dvdSpriteReady)
     Serial.println("DVD sprite error!");
 
+  pomoBarSprite.setColorDepth(16);
+  pomoBarSpriteReady = (pomoBarSprite.createSprite(360, 22) != nullptr);
+  if (!pomoBarSpriteReady)
+    Serial.println("Pomodoro bar sprite error!");
+
   for (int i = 0; i < HISTORY_LEN; i++)
   {
     cpuHistory[i] = 0.0;
@@ -2873,10 +3093,12 @@ void loop()
   }
 
   // ====== TOUCH INPUT HANDLER ======
-  // On the animation page, poll touch at 20 ms intervals so the touch
+  // On animated pages, poll touch at 20 ms intervals so the touch
   // controller read does not stall every animation frame.
   static unsigned long lastTouchPoll = 0;
-  bool pollTouch = (currentPage != 2) || (currentMillis - lastTouchPoll >= 20);
+  bool pollTouch = (currentPage == 1 || currentPage == 2)
+                       ? (currentMillis - lastTouchPoll >= 20)
+                       : true;
   if (pollTouch)
   {
     lastTouchPoll = currentMillis;
@@ -2978,40 +3200,71 @@ void loop()
             clockSubPage = 0;
             drawClockPage();
           }
-          else if (touchY >= 90 && touchY <= 145)
+          else if (touchY >= 106 && touchY <= 162)
           {
-            if (touchX >= 25 && touchX < 80 && !pomodoroActive && pomodoroMinutes > 1)
+            if (touchX >= 35 && touchX < 90 && !pomodoroActive && pomodoroMinutes > 1)
             {
               pomodoroMinutes--;
+              pomodoroPaused = false;
+              pomodoroFinished = false;
+              pomodoroRemainingMs = 0;
               drawClockPage();
             }
-            else if (touchX >= 395 && touchX < 455 && !pomodoroActive && pomodoroMinutes < 60)
+            else if (touchX >= 390 && touchX < 445 && !pomodoroActive && pomodoroMinutes < 60)
             {
               pomodoroMinutes++;
+              pomodoroPaused = false;
+              pomodoroFinished = false;
+              pomodoroRemainingMs = 0;
               drawClockPage();
             }
           }
-          else if (touchY >= 175 && touchY <= 220 && !pomodoroActive)
+          else if (touchY >= 214 && touchY <= 250 && !pomodoroActive)
           {
+            bool changed = false;
             if (touchX >= 30 && touchX < 120)
+            {
               pomodoroMinutes = 10;
+              changed = true;
+            }
             else if (touchX >= 140 && touchX < 230)
+            {
               pomodoroMinutes = 15;
+              changed = true;
+            }
             else if (touchX >= 250 && touchX < 340)
+            {
               pomodoroMinutes = 25;
+              changed = true;
+            }
             else if (touchX >= 360 && touchX < 450)
+            {
               pomodoroMinutes = 45;
-            drawClockPage();
+              changed = true;
+            }
+            if (changed)
+            {
+              pomodoroPaused = false;
+              pomodoroFinished = false;
+              pomodoroRemainingMs = 0;
+              drawClockPage();
+            }
           }
-          else if (touchY >= 235 && touchY <= 285)
+          else if (touchY >= 250 && touchY <= 296)
           {
             if (touchX >= 75 && touchX < 235)
             {
               if (!pomodoroActive)
               {
+                if (pomodoroRemainingMs == 0)
+                {
+                  pomodoroDurationMs = (unsigned long)pomodoroMinutes * 60000UL;
+                  pomodoroRemainingMs = pomodoroDurationMs;
+                }
                 pomodoroActive = true;
                 pomodoroPaused = false;
-                pomodoroEndMillis = millis() + ((pomodoroRemainingMs == 0) ? ((unsigned long)pomodoroMinutes * 60000) : pomodoroRemainingMs);
+                pomodoroFinished = false;
+                pomodoroEndMillis = millis() + pomodoroRemainingMs;
               }
               else
               {
@@ -3171,9 +3424,10 @@ void loop()
   {
     static unsigned long lastClockAnim = 0;
     static int lastClockSec = -1;
-    // The clock only changes once per second; 100 ms is enough to catch the
-    // tick without redrawing loop work 30 times a second.
-    if (currentMillis - lastClockAnim >= 100)
+    // The countdown only needs 100 ms updates, but the Pomodoro block wave
+    // needs a steady 50 FPS to avoid visible stepping.
+    unsigned long clockInterval = (clockSubPage == 1 && pomodoroActive) ? 20UL : 100UL;
+    if (currentMillis - lastClockAnim >= clockInterval)
     {
       lastClockAnim = currentMillis;
       time_t now;
