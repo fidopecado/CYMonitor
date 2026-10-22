@@ -498,9 +498,9 @@ svg { display: block; }
 .tab.active {
   top: 0;
   height: 32px;
-  background: var(--card);
+  background: var(--bg);
   color: var(--white);
-  border-bottom-color: var(--card);
+  border-bottom-color: var(--bg);
   z-index: 2;
 }
 .tab.active::before {
