@@ -2907,15 +2907,13 @@ void drawThemeSettings()
     tft.fillRect(colX[col], contentTop + row * rowPitch, cardW, cardH, T.bg);
   }
 
-  // Page indicator on the right edge.
+  // Page indicator on the right edge, aligned with each theme row.
   int segmentH = 60;
-  int segmentGap = 8;
-  int totalH = THEME_PAGES * segmentH + (THEME_PAGES - 1) * segmentGap;
-  int indicatorY = contentTop + (contentBottom - contentTop - totalH) / 2;
   for (int p = 0; p < THEME_PAGES; p++)
   {
+    int segY = contentTop + p * rowPitch + (cardH - segmentH) / 2;
     uint16_t color = (p == themePage) ? T.gold : T.cardBorder;
-    tft.fillRoundRect(466, indicatorY + p * (segmentH + segmentGap), 4, segmentH, 2, color);
+    tft.fillRoundRect(466, segY, 4, segmentH, 2, color);
   }
 }
 
