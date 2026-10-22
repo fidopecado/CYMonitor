@@ -477,12 +477,12 @@ svg { display: block; }
 }
 .tab {
   position: absolute;
-  top: 4px;
+  top: 0;
   width: 92px;
-  height: 26px;
+  height: 32px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font-family: var(--sans);
@@ -491,13 +491,13 @@ svg { display: block; }
   letter-spacing: .4px;
   cursor: pointer;
 }
-.tab:nth-child(1) { left: 2px; }
-.tab:nth-child(2) { left: 96px; }
-.tab:nth-child(3) { left: 190px; }
-.tab:nth-child(4) { left: 284px; }
+.tab:nth-child(1) { left: 0; }
+.tab:nth-child(2) { left: 92px; }
+.tab:nth-child(3) { left: 184px; }
+.tab:nth-child(4) { left: 276px; }
 .tab.active {
-  top: 4px;
-  height: 28px;
+  top: 0;
+  height: 32px;
   background: var(--card);
   color: var(--white);
   border-bottom-color: var(--card);
@@ -1105,8 +1105,8 @@ button.subcard:active { filter: brightness(1.25); }
   position: absolute;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 4px;
 }
 .theme-page-indicator i {
@@ -1124,6 +1124,7 @@ button.subcard:active { filter: brightness(1.25); }
   height: 66px;
   border: 1px solid;
   border-radius: 6px;
+  overflow: hidden;
   cursor: pointer;
 }
 .theme-card.selected {
