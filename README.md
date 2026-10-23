@@ -2,13 +2,13 @@
 
 A touch-first ESP32 desk display for live PC telemetry, built around the **ESP32-3248S035 “CYD” 3.5″ board** and **LibreHardwareMonitor**.
 
-The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans the hardware tree for CPU, GPU and RAM sensors, and renders the results on a 480 × 320 TFT with TFT_eSPI. The repository also includes a static browser recreation of the interface and a Docker image that serves the complete web experience.
+The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans the hardware tree for CPU, GPU and RAM sensors, and renders the results on a 480 × 320 TFT with TFT_eSPI. The repository also includes a browser version of the same CYD screens, with an optional live connection to LibreHardwareMonitor, and a Docker image that serves the complete web experience.
 
 ![CYD Monitor landing page with the embedded simulator](docs/preview.png)
 
-*Browser demo preview. The telemetry shown in the simulator is generated; the firmware reads real sensors when connected to LibreHardwareMonitor.*
+*Browser demo preview. The landing-page simulator uses generated telemetry; the standalone app can read real sensors from LibreHardwareMonitor.*
 
-> The browser demo is simulated. It does not connect to the ESP32 or to LibreHardwareMonitor.
+> The landing-page simulator is generated. The standalone web app at [`web/app.html`](web/app.html) can fetch a LibreHardwareMonitor `data.json` endpoint directly; it never controls the ESP32.
 
 ## Contents
 
@@ -44,7 +44,7 @@ The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans 
 | **Animation** | Matrix rain, 3D starfield and bouncing DVD modes. |
 | **Settings** | Saved networks and the 18-theme gallery. |
 
-The web demo contains all four screens in [web/index.html](web/index.html); [web/app.html](web/app.html) opens the interface alone, without the surrounding project page.
+The web version contains all four screens. [web/index.html](web/index.html) is the project landing page with an embedded simulator; [web/app.html](web/app.html) opens the CYD interface alone, without site chrome, and can connect to a live LibreHardwareMonitor source.
 
 ## Architecture
 
@@ -97,17 +97,31 @@ The pin map, display driver, SPI speeds and partition table are defined in [`pla
 - **Time:** `configTime()` with `pool.ntp.org`, GMT+7 and no daylight-saving offset.
 - **Networking:** six saved profiles are tried automatically. If no profile connects, the board starts the `CYD-MONITOR-AP` captive portal and restarts after the 240-second portal timeout.
 
-## Web demo
+## Web app
 
-The web folder is a dependency-free static site:
+The web folder is a dependency-free static site with two entry points:
 
-- [web/index.html](web/index.html) — project landing page with an embedded interactive simulator.
-- [web/app.html](web/app.html) — the four-screen CYD interface on its own, scaled to fill the browser.
-- [web/app.css](web/app.css) — full-page layout for the standalone interface.
-- [web/styles.css](web/styles.css) — site and simulated-device styling.
-- [web/app.js](web/app.js) — theme engine, simulated telemetry, touch interactions and navigation.
+- [web/index.html](web/index.html) — project landing page with an embedded, generated-telemetry simulator.
+- [web/app.html](web/app.html) — the CYD screens alone: Monitor, Clock/Pomodoro, Animation and Settings.
+- [web/app.css](web/app.css) — fluid full-screen layout for the standalone app.
+- [web/app-live.js](web/app-live.js) — live LibreHardwareMonitor scanner, browser clock, Pomodoro, animations, settings and source handling.
+- [web/app.js](web/app.js) — theme engine and generated telemetry for the landing-page simulator.
+- [web/theme-data.js](web/theme-data.js) — the shared 18 RGB565 palettes.
+- [web/styles.css](web/styles.css) — landing-page and simulated-device styling.
 
-The site uses the same 18 RGB565 palettes as the firmware and defaults to the light **E-INK** theme. The demo uses generated telemetry, not real sensor data.
+The standalone app is designed as a web representation of the CYD screens, not a separate dashboard. It fills the available browser or phone viewport, uses the same palette set as the firmware, and keeps the CYD tab structure and screen hierarchy. Clock mode uses the browser's local time and shows the computed GMT offset; there is no NTP requirement on the web.
+
+### Live LibreHardwareMonitor data
+
+1. Start LibreHardwareMonitor on the Windows PC that owns the sensors.
+2. Open **Options → Remote Web Server → Run**.
+3. Confirm `http://<pc-ip>:8085/data.json` opens in a browser on the same network.
+4. Serve this folder over HTTP (for example `python -m http.server 8099` from `web/`) and open `http://127.0.0.1:8099/app.html`.
+5. Enter the `data.json` URL in the setup screen.
+
+LibreHardwareMonitor sends `Access-Control-Allow-Origin: *` by default, so the app can fetch it directly. Use the plain `/data.json` URL: LHM's built-in server returns 404 for URLs with query strings such as `/data.json?x=1`. The page must be served over HTTP or localhost: an HTTPS page cannot fetch an HTTP endpoint because browsers block mixed content. The app does not request Wi-Fi credentials. The endpoint URL is stored only in browser local storage.
+
+If the source cannot be reached, the app shows a clearly labeled **DEMO** mode or a **STALE/OFFLINE** state; live values are never silently replaced by generated ones. The landing-page simulator remains generated and is labeled as such.
 
 ## Repository layout
 
@@ -118,10 +132,12 @@ The site uses the same 18 RGB565 palettes as the firmware and defaults to the li
 ├── platformio.ini            # board, libraries, display and touch configuration
 ├── web/
 │   ├── index.html            # portfolio page + embedded simulator
-│   ├── app.html              # standalone CYD interface
-│   ├── app.css               # standalone page layout
-│   ├── app.js                # simulator and theme engine
-│   └── styles.css            # site + simulated-device styles
+│   ├── app.html              # standalone CYD screens
+│   ├── app.css               # full-screen CYD layout
+│   ├── app-live.js           # live LibreHardwareMonitor runtime
+│   ├── app.js                # landing simulator
+│   ├── theme-data.js         # shared 18 RGB565 palettes
+│   └── styles.css            # landing page + simulated-device styles
 ├── docs/
 │   └── preview.png           # browser demo screenshot
 ├── deploy/
@@ -165,7 +181,7 @@ Connect to it, open `http://192.168.4.1`, choose the Wi-Fi network and paste the
 
 The default firmware URL is `http://192.168.1.50:8085/data.json`; replace it with the address of your PC.
 
-### 3. Run the web demo
+### 3. Run the web app
 
 From the repository root:
 
@@ -174,7 +190,9 @@ cd web
 python -m http.server 8099
 ```
 
-Open `http://127.0.0.1:8099/` for the landing page or `http://127.0.0.1:8099/app.html` for the standalone interface. Port 8099 is only a local example; port 8085 is normally reserved for LibreHardwareMonitor.
+Open `http://127.0.0.1:8099/` for the landing page or `http://127.0.0.1:8099/app.html` for the full-screen CYD interface. In the standalone app, either choose **Demo data** or paste the LibreHardwareMonitor `data.json` URL to connect live.
+
+Port 8099 is only a local example; port 8085 is normally reserved for LibreHardwareMonitor. Serve the app over HTTP or localhost rather than opening `app.html` from the filesystem. An HTTPS deployment cannot fetch an HTTP LibreHardwareMonitor endpoint because of mixed-content blocking; use an HTTPS proxy for LHM if you need HTTPS.
 
 ## Docker
 
@@ -210,7 +228,10 @@ The image uses Nginx, serves `web/` from `/usr/share/nginx/html`, exposes a `/he
 | NTP server | `pool.ntp.org` | `src/main.cpp` |
 | Time zone | GMT+7 | `src/main.cpp` |
 | Themes | 18, saved in NVS | `src/main.cpp` |
-| Web default theme | E-INK | `web/app.js` |
+| Web themes | 18, shared with the firmware palettes | `web/theme-data.js` |
+| Web default theme | E-INK | `web/app-live.js`, `web/app.js` |
+| Web clock | Browser local time and computed GMT offset | `web/app-live.js` |
+| Web live source | Configurable LibreHardwareMonitor `data.json` URL | `web/app.html` setup screen |
 | Container port | 80 (mapped to 8080 by Compose) | `Dockerfile`, `docker-compose.yml` |
 
 ## Limitations
@@ -220,8 +241,10 @@ The image uses Nginx, serves `web/` from `/usr/share/nginx/html`, exposes a `/he
 - The telemetry endpoint is plain HTTP by default and there is no user account. Run the project on a trusted LAN.
 - The firmware is configured for the ESP32-3248S035 pin map and ST7796 panel. Other CYD variants may need changes in `platformio.ini` and `src/main.cpp`.
 - Sensor naming varies by motherboard and GPU. The scanner uses heuristics and falls back to a no-data state when a field is unavailable.
-- The browser demo is a static simulation, not a remote control.
-- There is no RTC, so the clock needs a working Wi-Fi connection and NTP sync.
+- The browser app is read-only; it does not remote-control the ESP32.
+- Live browser data requires LibreHardwareMonitor's Remote Web Server and a CORS-permitting endpoint. The app handles generated demo data separately and labels it.
+- Browsers do not expose SSID, RSSI, local IP, gateway or DNS to web pages, so the web diagnostics show only observable browser and fetch facts.
+- There is no RTC on the CYD, so the firmware clock needs a working Wi-Fi connection and NTP sync. The web clock uses the device's local time instead.
 
 ## Acknowledgements
 

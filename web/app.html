@@ -2,212 +2,410 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CYD Web App · ESP32 480×320 dashboard</title>
-<meta name="description" content="Full-screen browser version of the CYD 3.5-inch dashboard: telemetry, Wi-Fi diagnostics, clock, Pomodoro, animations and 18 themes. Use it on a phone or spare laptop." />
-<meta name="theme-color" content="#07080a" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>CYD Monitor</title>
+<meta name="description" content="The CYD Monitor interface, live in a browser." />
+<meta name="theme-color" id="themeColor" content="#f7f7f7" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Crect x='5' y='8' width='22' height='16' rx='2' fill='%23051f'/%3E%3Crect x='8' y='11' width='7' height='3' fill='%23fc40'/%3E%3Crect x='8' y='16' width='13' height='2' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E" />
-<link rel="stylesheet" href="styles.css?v=17" />
-<link rel="stylesheet" href="app.css?v=4" />
+<link rel="stylesheet" href="app.css?v=11" />
 </head>
-<body class="app-page">
+<body class="app-body">
+<a class="skip-link" href="#main">Skip to screens</a>
 
-<main class="app-main">
-  <section class="app-stage" aria-label="CYD web interface">
-    <div class="app-screen-frame">
-      <div class="bezel">
-          <div class="viewport" id="viewport">
-            <div class="screen" id="screen">
+<!-- ======================================================================
+     LIVE DATA SOURCE — the browser equivalent of the CYD setup portal
+     ====================================================================== -->
+<div class="setup" id="setup" hidden aria-labelledby="setupTitle">
+  <div class="setup-screen">
+    <header class="setup-bar">
+      <span class="setup-brand">CYD MONITOR</span>
+      <button class="cy-button cy-button--quiet" type="button" id="closeSetup" hidden>CLOSE</button>
+    </header>
 
-              <!-- ---------- HEADER ---------- -->
-              <div class="tabs" role="group" aria-label="Device pages">
-                <button class="tab active" data-page="0" aria-pressed="true" style="--tab-accent:var(--a1)"><span>MONITOR</span></button>
-                <button class="tab" data-page="1" aria-pressed="false" style="--tab-accent:var(--a2)"><span>CLOCK</span></button>
-                <button class="tab" data-page="2" aria-pressed="false" style="--tab-accent:var(--cool)"><span>ANIMATION</span></button>
-                <button class="tab" data-page="3" aria-pressed="false" style="--tab-accent:var(--gold)"><span>SETTINGS</span></button>
-                <div class="wifi" aria-hidden="true">
-                  <div class="wifi-bars" id="wifiBars"><i></i><i></i><i></i><i></i></div>
-                  <span class="wifi-label" id="rssiLabel">-52dB</span>
-                </div>
+    <div class="setup-content">
+      <p class="cy-kicker">LIVE DATA SOURCE</p>
+      <h1 id="setupTitle">LibreHardwareMonitor</h1>
+      <p class="setup-copy">
+        Enter the <code>data.json</code> address from the LibreHardwareMonitor
+        Remote Web Server.
+      </p>
+
+      <form id="setupForm" novalidate>
+        <label class="cy-label" for="sourceUrl">DATA.JSON URL</label>
+        <input
+          id="sourceUrl"
+          name="sourceUrl"
+          type="text"
+          inputmode="url"
+          autocomplete="url"
+          spellcheck="false"
+          placeholder="http://192.168.1.50:8085/data.json"
+          aria-describedby="sourceHint setupStatus"
+          required
+        />
+        <p class="hint" id="sourceHint">
+          The host alone works too. <code>/data.json</code> is added automatically.
+        </p>
+
+        <div class="setup-actions">
+          <button class="cy-button cy-button--primary" type="submit" id="connectBtn">CONNECT</button>
+          <button class="cy-button" type="button" id="demoBtn">DEMO DATA</button>
+        </div>
+
+        <p class="form-status" id="setupStatus" role="status" aria-live="polite"></p>
+      </form>
+
+      <div class="cy-warning" id="secureWarning" hidden>
+        <b>HTTPS page detected.</b> Browsers block an HTTPS page from fetching a
+        local HTTP endpoint. Open this page over HTTP or use an HTTPS proxy.
+      </div>
+
+      <details class="cy-details">
+        <summary>WHERE DO I FIND THIS URL?</summary>
+        <ol>
+          <li>Run LibreHardwareMonitor on the PC that owns the sensors.</li>
+          <li>Open <b>Options → Remote Web Server → Run</b>.</li>
+          <li>Open <code>http://&lt;pc-ip&gt;:8085/data.json</code> on this network.</li>
+          <li>Allow port 8085 through Windows Firewall if needed.</li>
+        </ol>
+        <p>LibreHardwareMonitor sends <code>Access-Control-Allow-Origin: *</code> by default.</p>
+      </details>
+
+      <div class="saved-sources" id="savedSources" hidden>
+        <p class="cy-kicker">RECENT SOURCES</p>
+        <div class="saved-source-list" id="savedSourceList"></div>
+      </div>
+
+      <p class="setup-foot">No Wi-Fi credentials. The URL stays in this browser.</p>
+      <div class="setup-palette" id="setupPalette" aria-hidden="true"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================================
+     CYD SCREENS
+     ====================================================================== -->
+<div class="app" id="app" hidden>
+  <header class="tabs" role="tablist" aria-label="CYD pages">
+    <button class="nav-button is-active" type="button" data-page="monitor" role="tab" aria-selected="true">MONITOR</button>
+    <button class="nav-button" type="button" data-page="clock" role="tab" aria-selected="false">CLOCK</button>
+    <button class="nav-button" type="button" data-page="animation" role="tab" aria-selected="false">ANIMATION</button>
+    <button class="nav-button" type="button" data-page="settings" role="tab" aria-selected="false">SETTINGS</button>
+    <div class="tab-status" id="statusPill" data-state="demo" title="Data source status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="statusText">DEMO</span>
+    </div>
+  </header>
+
+  <main class="app-main" id="main">
+    <div class="mode-banner" id="modeBanner" hidden>
+      <span class="banner-symbol" id="bannerSymbol" aria-hidden="true">!</span>
+      <p id="bannerText"></p>
+      <button class="cy-button cy-button--small" type="button" id="bannerAction">FIX SOURCE</button>
+    </div>
+
+    <!-- ------------------------------------------------------------------
+         MONITOR — hardware / Wi-Fi diagnostics
+         ------------------------------------------------------------------ -->
+    <section class="page page--monitor is-active" data-page="monitor" aria-label="Monitor">
+      <div class="monitor-view monitor-view--hardware" data-monitor-panel="hardware">
+        <div class="monitor-grid">
+          <article class="cy-card metric-card" data-kind="cpu">
+            <header class="cy-card-head">
+              <span class="cy-tag cy-tag--cpu">CPU</span>
+              <div class="cy-card-name">
+                <h2 id="cpuName">WAITING FOR TELEMETRY</h2>
+                <p id="cpuMeta" class="sr-only">No source connected</p>
               </div>
+              <span class="trend" id="cpuTrend">—</span>
+            </header>
 
-              <!-- ---------- PAGE 0 : MONITOR ---------- -->
-              <section class="page on" data-page="0" aria-label="Hardware monitor">
-                <div class="mon-panel" data-sub="0">
-                  <!-- CPU -->
-                  <div class="card" style="left:8px;top:36px;width:228px;height:210px;"></div>
-                  <div class="badge" style="left:16px;top:43px;width:38px;height:18px;background:var(--a1);color:var(--bg);">CPU</div>
-                  <div class="f1 muted nowrap" id="cpuName" style="left:60px;top:48px;max-width:162px;overflow:hidden;text-overflow:ellipsis;">AMD RYZEN 5 5600</div>
-
-                  <div class="temp-row" style="left:16px;top:65px;">
-                    <span class="f6" id="cpuTemp">--.-</span>
-                    <span class="deg">°C</span>
-                  </div>
-                  <div class="trend" id="cpuTrend" style="left:148px;top:75px;"></div>
-
-                  <div class="f1 muted nowrap" style="left:16px;top:117px;">LOAD</div>
-                  <div class="minibar" style="left:46px;top:119px;width:54px;height:6px;"><i id="cpuBar"></i></div>
-                  <div class="f1 muted nowrap" id="cpuLoad" style="left:106px;top:117px;">--.-%</div>
-                  <div class="f1 muted nowrap" id="cpuExtra" style="left:146px;top:117px;width:82px;text-align:right;">-- W</div>
-
-                  <canvas class="spark" id="cpuSpark" width="636" height="312" style="left:16px;top:133px;"></canvas>
-
-                  <!-- GPU -->
-                  <div class="card" style="left:244px;top:36px;width:228px;height:210px;"></div>
-                  <div class="badge" style="left:252px;top:43px;width:38px;height:18px;background:var(--a2);color:var(--bg);">GPU</div>
-                  <div class="f1 muted nowrap" id="gpuName" style="left:296px;top:48px;max-width:162px;overflow:hidden;text-overflow:ellipsis;">RX 6700 XT</div>
-
-                  <div class="temp-row" style="left:252px;top:65px;">
-                    <span class="f6" id="gpuTemp">--.-</span>
-                    <span class="deg">°C</span>
-                  </div>
-
-                  <div class="hot-pill" id="gpuHot" style="left:368px;top:43px;width:96px;height:18px;">HOT: --.-C</div>
-                  <div class="trend" id="gpuTrend" style="left:388px;top:75px;"></div>
-
-                  <div class="f1 muted nowrap" style="left:252px;top:117px;">LOAD</div>
-                  <div class="minibar" style="left:282px;top:119px;width:54px;height:6px;"><i id="gpuBar"></i></div>
-                  <div class="f1 muted nowrap" id="gpuLoad" style="left:342px;top:117px;">--.-%</div>
-                  <div class="f1 muted nowrap" id="gpuVram" style="left:380px;top:117px;width:84px;text-align:right;">VRAM: --</div>
-
-                  <canvas class="spark" id="gpuSpark" width="636" height="312" style="left:252px;top:133px;"></canvas>
-
-                  <!-- RAM -->
-                  <div class="card" style="left:8px;top:251px;width:464px;height:64px;"></div>
-                  <div class="badge" style="left:16px;top:257px;width:44px;height:16px;background:var(--a3);color:var(--bg);">RAM</div>
-                  <div class="f1 muted nowrap" style="left:68px;top:260px;">SYSTEM MEMORY</div>
-
-                  <div class="f1 nowrap" id="ramUsed" style="left:318px;top:260px;width:96px;text-align:right;color:var(--a1);">-- GB / -- GB</div>
-                  <div class="f2 nowrap" id="ramPct" style="left:422px;top:257px;width:42px;text-align:right;">--.-%</div>
-                  <div class="minibar" style="left:16px;top:279px;width:448px;height:8px;"><i id="ramBar"></i></div>
-
-                  <div class="f1 muted nowrap endpoint" id="endpoint" style="left:16px;top:300px;">SOURCE: http://192.168.1.50:8085/data.json</div>
-                  <button class="chip-btn" id="toDiag" style="left:320px;top:292px;width:144px;height:20px;background:var(--a2);color:var(--bg);">WIFI DIAG &gt;</button>
-                </div>
-
-                <div class="mon-panel" data-sub="1" hidden>
-                  <div class="card" style="left:8px;top:36px;width:464px;height:279px;"></div>
-                  <div class="badge" style="left:16px;top:44px;width:150px;height:22px;background:var(--a1);color:var(--bg);">WIFI DIAGNOSTICS</div>
-                  <div class="rule" style="left:16px;top:74px;width:448px;"></div>
-
-                  <div class="subcard" style="left:16px;top:82px;width:220px;height:100px;">
-                    <div class="card-title" style="color:var(--gold);">LINK QUALITY</div>
-                    <div class="wifi-big" id="signalPct">--%</div>
-                    <div class="f1 muted nowrap" id="rssiLine" style="left:132px;top:30px;">RSSI: -- dBm</div>
-                    <div class="f1 muted nowrap" id="chLine" style="left:132px;top:48px;">CH&nbsp;&nbsp;: --</div>
-                    <div class="f1 muted nowrap" id="ssidLine" style="left:132px;top:66px;">SSID: ----------</div>
-                  </div>
-
-                  <button class="subcard ping-card" id="pingCard" style="left:244px;top:82px;width:220px;height:100px;" aria-label="Cycle ping target">
-                    <div class="card-title" style="color:var(--gold);">LATENCY (PING)</div>
-                    <div class="f1 nowrap" id="pingTarget" style="left:10px;top:26px;color:var(--gold);">TARGET: GOOGLE (8.8.8.8)</div>
-                    <div class="f2 nowrap" id="pingGw" style="left:10px;top:46px;">GATEWAY : -- ms</div>
-                    <div class="f2 nowrap" id="pingSrv" style="left:10px;top:66px;">SERVER&nbsp;&nbsp;: -- ms</div>
-                  </button>
-
-                  <div class="subcard" style="left:16px;top:190px;width:448px;height:92px;">
-                    <div class="card-title" style="color:var(--a3);">NETWORK CONFIGURATION</div>
-                    <div class="f1 muted nowrap" style="left:10px;top:32px;">LOCAL IP&nbsp;&nbsp;&nbsp;: 192.168.1.42</div>
-                    <div class="f1 muted nowrap" style="left:10px;top:50px;">GATEWAY IP&nbsp;: 192.168.1.1</div>
-                    <div class="f1 muted nowrap" style="left:10px;top:68px;">SUBNET MASK: 255.255.255.0</div>
-                    <div class="f1 muted nowrap" style="left:228px;top:32px;">MAC ADDRESS: 24:6F:28:AA:BB:CC</div>
-                    <div class="f1 muted nowrap" style="left:228px;top:50px;">DNS SERVER&nbsp;: 192.168.1.1</div>
-                    <div class="f1 muted nowrap" id="cfgSsid" style="left:228px;top:68px;">SSID&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: HOME-5G</div>
-                  </div>
-
-                  <div class="f1 muted nowrap" style="left:16px;top:296px;">TAP PING CARD TO SWITCH TARGET</div>
-                  <button class="chip-btn" id="toHw" style="left:320px;top:292px;width:144px;height:20px;background:var(--a1);color:var(--bg);">&lt; HARDWARE</button>
-                </div>
-              </section>
-
-              <!-- ---------- PAGE 1 : CLOCK ---------- -->
-              <section class="page" data-page="1" aria-label="Clock and Pomodoro">
-                <div class="clock-panel" data-sub="0">
-                  <div class="clock-accent" style="left:20px;top:44px;height:26px;background:var(--a1);"></div>
-                  <div class="clock-title" style="left:30px;top:47px;">STANDBY CLOCK</div>
-                  <div class="clock-sub" style="left:30px;top:63px;">NTP SYNCED&nbsp;&nbsp;|&nbsp;&nbsp;GMT+7</div>
-                  <button class="clock-link" id="toPomo" style="left:336px;top:44px;width:126px;height:24px;">POMODORO &gt;</button>
-                  <div class="clock-link-rule" style="left:336px;top:68px;width:126px;background:var(--a1);"></div>
-                  <div class="rule" style="left:20px;top:78px;width:440px;"></div>
-
-                  <div class="clock-label">LOCAL TIME</div>
-                  <div class="clock-time" id="clockTime">00:00:00</div>
-                  <div class="clock-date" id="clockDate">—</div>
-                  <div class="clock-center-rule"></div>
-                  <div class="seconds-track"><i id="secondsBar"></i></div>
-                  <div class="clock-foot"><span>SECONDS</span><span>GMT+7</span></div>
-                </div>
-
-                <div class="clock-panel" data-sub="1" hidden>
-                  <div class="clock-accent" style="left:20px;top:44px;height:26px;background:var(--a2);"></div>
-                  <div class="clock-title" style="left:30px;top:47px;">POMODORO</div>
-                  <div class="clock-sub" style="left:30px;top:63px;">FOCUS TIMER</div>
-                  <button class="clock-link" id="toClock" style="left:376px;top:44px;width:86px;height:24px;">&lt; CLOCK</button>
-                  <div class="clock-link-rule" style="left:376px;top:68px;width:86px;background:var(--a1);"></div>
-                  <div class="rule" style="left:20px;top:78px;width:440px;"></div>
-
-                  <div class="pomo-status" id="pomoStatus" style="left:160px;top:44px;width:160px;height:24px;">READY</div>
-                  <div class="clock-label" style="top:94px;">REMAINING</div>
-                  <div class="pomo-digits" id="pomoDigits">25:00</div>
-                  <button class="stepper" id="pomoMinus" style="left:44px;top:114px;" aria-label="Decrease minutes">−</button>
-                  <button class="stepper" id="pomoPlus" style="left:400px;top:114px;" aria-label="Increase minutes">+</button>
-
-                  <div class="clock-label" style="top:164px;">SESSION</div>
-                  <div class="pomo-blocks" id="pomoBlocks" aria-hidden="true"></div>
-
-                  <button class="preset" data-min="10" style="left:30px;top:218px;">10m</button>
-                  <button class="preset" data-min="15" style="left:140px;top:218px;">15m</button>
-                  <button class="preset" data-min="25" style="left:250px;top:218px;">25m</button>
-                  <button class="preset" data-min="45" style="left:360px;top:218px;">45m</button>
-
-                  <button class="pomo-action" id="pomoStart" style="left:80px;top:254px;width:150px;height:38px;">START</button>
-                  <button class="pomo-action reset" id="pomoReset" style="left:250px;top:254px;width:150px;height:38px;">RESET</button>
-
-                  <div class="f1 muted nowrap" style="left:30px;top:294px;">SESSIONS</div>
-                  <div class="session-dots" id="sessionDots" style="left:202px;top:306px;width:76px;"></div>
-                </div>
-              </section>
-
-              <!-- ---------- PAGE 2 : ANIMATION ---------- -->
-              <section class="page" data-page="2" aria-label="Animations">
-                <div class="anim-stage" id="animStage" style="left:0;top:32px;width:480px;height:288px;">
-                  <canvas id="animCanvas" width="960" height="576"></canvas>
-                </div>
-                <div class="anim-hud" style="left:16px;top:282px;width:448px;height:24px;">
-                  <span id="animHud">MODE: MATRIX RAIN | FPS: 60.0 | TAP SCREEN TO SWITCH ANIMATION</span>
-                </div>
-              </section>
-
-              <!-- ---------- PAGE 3 : SETTINGS ---------- -->
-              <section class="page" data-page="3" aria-label="Settings">
-                <button class="settings-tab active" data-settings-tab="0" role="tab" aria-selected="true" style="left:16px;top:44px;width:220px;height:24px;">NETWORKS</button>
-                <button class="settings-tab" data-settings-tab="1" role="tab" aria-selected="false" style="left:244px;top:44px;width:220px;height:24px;">THEMES</button>
-
-                <div class="rule" style="left:16px;top:78px;width:448px;"></div>
-
-                <div class="settings-panel" data-settings-panel="0">
-                  <div class="network-grid" id="networkGrid"></div>
-                  <button class="chip-btn" id="addNetwork" style="left:16px;top:262px;width:448px;height:26px;background:var(--a1);color:var(--bg);">ADD / CHANGE NETWORK</button>
-                </div>
-
-                <div class="settings-panel" data-settings-panel="1" hidden>
-                  <div class="settings-viewport" id="settingsViewport" style="left:9px;top:80px;width:462px;height:210px;">
-                    <div class="theme-card-list" id="themeCards"></div>
-                  </div>
-                  <div class="theme-page-indicator" id="themePageIndicator" style="left:466px;top:85px;height:196px;"></div>
-                </div>
-
-                <div class="rule" style="left:16px;top:292px;width:448px;"></div>
-                <div class="settings-hint" id="settingsHint">TAP A NETWORK TO CONNECT&nbsp;&nbsp;|&nbsp;&nbsp;HOLD TO FORGET</div>
-              </section>
-
+            <div class="cy-readout">
+              <span class="cy-readout-value" id="cpuTemp">--.-</span>
+              <span class="cy-readout-unit">°C</span>
             </div>
+
+            <div class="cy-load">
+              <span class="cy-label">LOAD</span>
+              <div class="cy-bar"><i id="cpuBar"></i></div>
+              <b id="cpuLoad">--.-%</b>
+              <span class="cy-extra"><span id="cpuFan">-- RPM</span> · <span id="cpuPower">-- W</span></span>
+            </div>
+
+            <div class="cy-chart spark-wrap">
+              <span class="cy-chart-range" id="cpuRange">--</span>
+              <canvas id="cpuSpark" role="img" aria-label="CPU history"></canvas>
+            </div>
+          </article>
+
+          <article class="cy-card metric-card" data-kind="gpu">
+            <header class="cy-card-head">
+              <span class="cy-tag cy-tag--gpu">GPU</span>
+              <div class="cy-card-name">
+                <h2 id="gpuName">WAITING FOR TELEMETRY</h2>
+                <p id="gpuMeta" class="sr-only">No source connected</p>
+              </div>
+              <span class="trend" id="gpuTrend">—</span>
+            </header>
+
+            <div class="cy-readout">
+              <span class="cy-readout-value" id="gpuTemp">--.-</span>
+              <span class="cy-readout-unit" id="gpuUnit">°C</span>
+              <span class="cy-hotspot" id="gpuHot" hidden>HOT --.-°C</span>
+            </div>
+
+            <div class="cy-load">
+              <span class="cy-label">LOAD</span>
+              <div class="cy-bar"><i id="gpuBar"></i></div>
+              <b id="gpuLoad">--.-%</b>
+              <span class="cy-extra">VRAM <span id="gpuVram">--</span> / <span id="gpuVramTotal">--</span></span>
+            </div>
+
+            <div class="cy-chart spark-wrap">
+              <span class="cy-chart-range" id="gpuRange">--</span>
+              <canvas id="gpuSpark" role="img" aria-label="GPU history"></canvas>
+            </div>
+          </article>
+
+          <article class="cy-card cy-ram" data-kind="ram">
+            <div class="cy-ram-head">
+              <span class="cy-tag cy-tag--ram">RAM</span>
+              <span class="cy-label">SYSTEM MEMORY</span>
+              <span class="trend" id="ramTrend" hidden>—</span>
+              <span class="sr-only" id="ramMeta">No source connected</span>
+            </div>
+
+            <div class="cy-ram-body">
+              <div class="cy-ram-big"><span id="ramPct">--.-</span><small>%</small></div>
+              <div class="cy-ram-main">
+                <div class="cy-ram-numbers">
+                  <span><b id="ramUsed">-- GB</b> used</span>
+                  <span><b id="ramTotal">-- GB</b> total</span>
+                  <span id="ramFree">-- GB available</span>
+                  <span class="cy-ram-source" id="ramSource">—</span>
+                </div>
+                <div class="cy-bar cy-bar--large"><i id="ramBar"></i></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <footer class="cy-footer">
+          <span class="source-line">
+            <span class="source-badge" id="sourceBadge" data-state="demo"><span aria-hidden="true"></span><b id="sourceBadgeText">DEMO</b></span>
+            <code id="sourceEndpoint">Demo telemetry</code>
+          </span>
+          <button class="cy-footer-button" type="button" data-monitor-view="network">WIFI DIAG &gt;</button>
+        </footer>
+      </div>
+
+      <div class="monitor-view monitor-view--network" data-monitor-panel="network" hidden>
+        <div class="cy-card cy-diag-screen">
+          <header class="cy-diag-title">
+            <span class="cy-tag cy-tag--diag">WIFI DIAGNOSTICS</span>
+            <span class="cy-label">BROWSER FACTS ONLY</span>
+          </header>
+
+          <div class="cy-diag-grid">
+            <section class="cy-diag-box">
+              <h2>LINK QUALITY</h2>
+              <div class="cy-diag-big" id="netOnline">—</div>
+              <dl class="cy-diag-list">
+                <div><dt>EFFECTIVE TYPE</dt><dd id="netEffective">Not exposed</dd></div>
+                <div><dt>DOWNLINK</dt><dd id="netDownlink">Not exposed</dd></div>
+                <div><dt>ROUND TRIP</dt><dd id="netRtt">Not exposed</dd></div>
+                <div><dt>DATA SAVER</dt><dd id="netSaveData">Not exposed</dd></div>
+              </dl>
+            </section>
+
+            <section class="cy-diag-box">
+              <h2>LATENCY (PING)</h2>
+              <div class="cy-diag-big" id="netLatency">—</div>
+              <dl class="cy-diag-list">
+                <div><dt>HTTP STATUS</dt><dd id="netHttp">—</dd></div>
+                <div><dt>CONTENT TYPE</dt><dd id="netContentType">—</dd></div>
+                <div><dt>LAST SUCCESS</dt><dd id="netLastSuccess">—</dd></div>
+                <div><dt>LAST ERROR</dt><dd id="netLastError">—</dd></div>
+              </dl>
+            </section>
+
+            <section class="cy-diag-box cy-diag-box--wide">
+              <h2>SOURCE CONFIGURATION</h2>
+              <div class="cy-source-config">
+                <div><span>ENDPOINT</span><code id="netEndpoint">—</code></div>
+                <div><span>PAGE</span><code id="netProtocol">—</code></div>
+                <div><span>SOURCE</span><code id="sourceUpdated">—</code></div>
+                <div><span>SENSORS</span><code id="sourceSensors">—</code></div>
+                <div><span>LHM</span><code id="sourceVersion">—</code></div>
+                <div><span>RESPONSE</span><code id="sourceLatency">—</code></div>
+              </div>
+              <p class="cy-diag-warning" id="mixedContentWarning" hidden>
+                HTTPS pages cannot fetch an HTTP LibreHardwareMonitor endpoint.
+              </p>
+              <p class="cy-source-note" id="sourceNote"></p>
+            </section>
+
+            <section class="cy-diag-box cy-diag-box--wide cy-diag-log">
+              <h2>RECENT FETCHES</h2>
+              <ol class="request-log" id="requestLog">
+                <li class="request-empty">No live requests yet.</li>
+              </ol>
+            </section>
           </div>
+
+          <footer class="cy-diag-foot">
+            <div class="cy-diag-actions">
+              <button class="cy-button cy-button--small" type="button" id="refreshButton2">REFRESH NOW</button>
+              <button class="cy-button cy-button--small" type="button" id="copyDiagnostics">COPY DIAGNOSTICS</button>
+            </div>
+            <button class="cy-footer-button" type="button" data-monitor-view="hardware">&lt; HARDWARE</button>
+          </footer>
         </div>
       </div>
-  </section>
-</main>
+    </section>
 
-<script src="app.js?v=17"></script>
+    <!-- ------------------------------------------------------------------
+         CLOCK — standby clock / Pomodoro
+         ------------------------------------------------------------------ -->
+    <section class="page page--clock" data-page="clock" aria-label="Clock">
+      <div class="clock-screen">
+        <div class="clock-view" id="clockView">
+          <header class="cy-subhead">
+            <i class="cy-subhead-bar" aria-hidden="true"></i>
+            <div>
+              <h2>STANDBY CLOCK</h2>
+              <p>LOCAL TIME · <span id="clockOffset">GMT+0</span></p>
+            </div>
+            <span class="cy-chip" id="timeZoneChip">LOCAL</span>
+            <button class="cy-link" type="button" id="clockToPomodoro">POMODORO &gt;</button>
+          </header>
+
+          <div class="clock-main">
+            <span class="cy-label">LOCAL TIME</span>
+            <div class="clock-time" id="clockTime">00:00:00</div>
+            <p class="clock-date" id="clockDate">—</p>
+            <span class="clock-zone" id="clockZone">LOCAL</span>
+          </div>
+
+          <div class="seconds-track" aria-hidden="true"><i id="secondsBar"></i></div>
+          <footer class="clock-foot">
+            <span>SECONDS</span>
+            <span id="clockSeconds">00</span>
+            <span id="clockOffsetFoot">GMT+0</span>
+          </footer>
+        </div>
+
+        <div class="clock-view" id="pomoView" hidden>
+          <header class="cy-subhead">
+            <i class="cy-subhead-bar cy-subhead-bar--warm" aria-hidden="true"></i>
+            <div>
+              <h2>POMODORO</h2>
+              <p>FOCUS TIMER</p>
+            </div>
+            <span class="pomo-status" id="pomoStatus">READY</span>
+            <button class="cy-link" type="button" id="pomodoroToClock">&lt; CLOCK</button>
+          </header>
+
+          <div class="pomo-main">
+            <span class="cy-label">REMAINING</span>
+            <div class="pomo-digits" id="pomoDigits" aria-live="polite">25:00</div>
+            <div class="pomo-progress" id="pomoBlocks" aria-hidden="true"></div>
+          </div>
+
+          <div class="pomo-controls">
+            <button class="cy-step" type="button" id="pomoMinus" aria-label="Decrease minutes">−</button>
+            <div class="pomo-presets" role="group" aria-label="Pomodoro presets">
+              <button class="preset" type="button" data-min="10">10m</button>
+              <button class="preset" type="button" data-min="15">15m</button>
+              <button class="preset is-selected" type="button" data-min="25">25m</button>
+              <button class="preset" type="button" data-min="45">45m</button>
+            </div>
+            <button class="cy-step" type="button" id="pomoPlus" aria-label="Increase minutes">+</button>
+          </div>
+
+          <div class="pomo-actions">
+            <button class="cy-button cy-button--primary" type="button" id="pomoStart">START</button>
+            <button class="cy-button" type="button" id="pomoReset">RESET</button>
+          </div>
+
+          <footer class="pomo-footer">
+            <span>SESSIONS <b id="pomoSessions">0</b></span>
+            <span class="session-dots" id="sessionDots" aria-label="Completed sessions"></span>
+          </footer>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         ANIMATION
+         ------------------------------------------------------------------ -->
+    <section class="page page--animation" data-page="animation" aria-label="Animation">
+      <div class="animation-stage" id="animStage" role="button" tabindex="0" aria-label="Animation. Click or press Enter to switch animation.">
+        <canvas id="animCanvas"></canvas>
+        <div class="animation-hud">
+          <span id="animHud">MODE: MATRIX RAIN | FPS: --</span>
+          <span class="animation-hint">TAP SCREEN TO SWITCH ANIMATION</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         SETTINGS — sources / themes
+         ------------------------------------------------------------------ -->
+    <section class="page page--settings" data-page="settings" aria-label="Settings">
+      <div class="settings-screen">
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+          <button class="settings-tab is-active" type="button" data-settings-tab="source" role="tab" aria-selected="true">SOURCES</button>
+          <button class="settings-tab" type="button" data-settings-tab="themes" role="tab" aria-selected="false">THEMES</button>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="source">
+          <div class="source-grid" id="sourceGrid"></div>
+          <p class="source-empty" id="sourceEmpty">
+            NO SAVED SOURCES
+            <span>USE ADD / CHANGE SOURCE BELOW</span>
+          </p>
+
+          <button class="cy-button cy-button--primary settings-main-action" type="button" id="settingsSource">ADD / CHANGE SOURCE</button>
+
+          <footer class="source-foot">
+            <span class="source-hint">TAP A SOURCE TO CONNECT</span>
+            <label class="source-interval" for="intervalSelect">
+              <span>REFRESH</span>
+              <select id="intervalSelect" class="cy-select">
+                <option value="1000">1 SECOND</option>
+                <option value="2000">2 SECONDS</option>
+                <option value="3000">3 SECONDS</option>
+                <option value="5000">5 SECONDS</option>
+                <option value="10000">10 SECONDS</option>
+                <option value="30000">30 SECONDS</option>
+              </select>
+            </label>
+            <button class="cy-link source-diagnostics" type="button" id="settingsDiagnostics">NETWORK VIEW &gt;</button>
+          </footer>
+
+          <p class="settings-note" id="settingsSourceNote" hidden></p>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="themes" hidden>
+          <div class="theme-grid" id="themeGrid"></div>
+          <footer class="theme-foot">
+            <span class="theme-hint">TAP A THEME TO APPLY · <b id="themeCurrent">E-INK</b></span>
+            <span class="theme-pager">
+              <button class="cy-button cy-button--small" type="button" id="themePrev">←</button>
+              <span id="themePageLabel">1 / 3</span>
+              <button class="cy-button cy-button--small" type="button" id="themeNext">→</button>
+            </span>
+          </footer>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="theme-data.js?v=1"></script>
+<script src="app-live.js?v=6"></script>
 </body>
 </html>
