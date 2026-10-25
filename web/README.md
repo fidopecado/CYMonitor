@@ -54,9 +54,10 @@ The landing-page simulator is generated locally. The standalone app can use gene
 - The Clock view uses the browser's local time and shows the computed GMT offset. Unlike the firmware, the web app does not require NTP.
 - Pomodoro presets, progress blocks, session dots and the start/pause/reset controls work locally in the browser.
 - Animations include Matrix rain, a 3D starfield and a bouncing DVD sprite, with a measured-FPS HUD.
-- Settings has **Sources** and **Themes** tabs. The theme gallery uses the same 18 palettes and pages through six themes at a time.
+- Settings has **Sources**, **Themes** and **Style** tabs. The theme gallery uses the same 18 palettes and fits as many title-and-color cards per page as the available screen space allows.
+- The **Style** tab has a Neo Brutalist switch. It adds thick outlines, hard offset shadows and square corners to every screen while keeping the selected color theme.
 - The app asks only for the LibreHardwareMonitor `data.json` URL. It does not ask for or store Wi-Fi passwords.
-- The endpoint URL and selected theme are stored in browser local storage.
+- The endpoint URL, selected theme and style are stored in browser local storage.
 - Browser pages cannot read SSID, RSSI, channel, local IP, gateway, subnet or DNS. The web diagnostics show only browser facts, fetch status, latency and request history.
 - The app is read-only and never controls the ESP32.
 

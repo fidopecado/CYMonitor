@@ -13,6 +13,7 @@
   const FETCH_TIMEOUT = 10000;
   const ALLOWED_INTERVALS = [1000, 2000, 3000, 5000, 10000, 30000];
   const PAGES = ['monitor', 'clock', 'animation', 'settings'];
+  const SETTINGS_TABS = ['source', 'themes', 'style'];
   const ANIM_NAMES = ['MATRIX RAIN', 'STARFIELD 3D', 'BOUNCING DVD'];
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -113,6 +114,8 @@
       ? Number(parsed.interval)
       : 3000;
 
+    const style = parsed && parsed.style === 'brutalist' ? 'brutalist' : 'cyd';
+
     return {
       hasStored: !!parsed,
       config: {
@@ -121,6 +124,7 @@
         sources,
         theme,
         interval,
+        style,
       },
     };
   }
@@ -220,11 +224,13 @@
     mode: config.mode,
     configured: loaded.hasStored,
     theme: config.theme,
+    style: config.style,
     page: 'monitor',
     monitorView: 'hardware',
     clockView: 'clock',
     settingsTab: 'source',
     themePage: Math.floor(config.theme / 6),
+    themePageSize: 6,
     telemetry: emptyTelemetry(),
     demoData: makeDemoTelemetry(),
     lastSuccess: 0,
@@ -718,6 +724,17 @@
     saveConfig();
     markThemeSelection();
     drawAllSparks();
+  }
+
+  function applyStyle(value) {
+    const style = value === 'brutalist' ? 'brutalist' : 'cyd';
+    config.style = style;
+    state.style = style;
+    document.documentElement.dataset.style = style;
+
+    const toggle = $('#styleBrutalist');
+    if (toggle) toggle.checked = style === 'brutalist';
+    setText('styleState', style === 'brutalist' ? 'ON' : 'OFF');
   }
 
   // ------------------------------------------------------------------------
@@ -1300,15 +1317,61 @@
     if (current) current.textContent = PALETTES[state.theme].name;
   }
 
-  const THEME_PAGE_SIZE = 6;
+  function themePageLayout() {
+    const host = $('#themeGrid');
+    if (!host) return { perPage: 6, cols: 2, rows: 3, minHeight: 104 };
+
+    const rect = host.getBoundingClientRect();
+    const styles = getComputedStyle(host);
+    const gap = parseFloat(styles.rowGap || styles.gap) || 8;
+    const viewport = window.innerWidth;
+    const small = viewport <= 430;
+    const minWidth = small ? 138 : viewport <= 720 ? 150 : 210;
+    const minHeight = small ? 96 : viewport <= 720 ? 104 : 118;
+    const width = rect.width || host.clientWidth || Math.max(280, viewport - (small ? 28 : 56));
+    const height = rect.height || host.clientHeight || Math.max(minHeight * 3 + gap * 2, window.innerHeight * 0.55);
+
+    const maxCols = clamp(Math.floor((width + gap) / (minWidth + gap)), 1, 6);
+    const maxRows = clamp(Math.floor((height + gap) / (minHeight + gap)), 1, 4);
+    const capacity = Math.max(1, maxCols * maxRows);
+    const perPage = [18, 9, 6, 3, 2, 1].find((size) => size <= capacity) || 1;
+
+    let cols = 0;
+    for (let candidate = Math.min(maxCols, perPage); candidate >= 1; candidate -= 1) {
+      if (perPage % candidate !== 0) continue;
+      if (perPage / candidate <= maxRows) {
+        cols = candidate;
+        break;
+      }
+    }
+    if (!cols) cols = Math.max(1, Math.min(maxCols, perPage));
+
+    return {
+      perPage,
+      cols,
+      rows: Math.max(1, Math.ceil(perPage / cols)),
+      minHeight,
+    };
+  }
 
   function renderThemeGrid() {
     const host = $('#themeGrid');
     if (!host) return;
-    const pages = Math.max(1, Math.ceil(PALETTES.length / THEME_PAGE_SIZE));
-    state.themePage = clamp(state.themePage, 0, pages - 1);
-    const first = state.themePage * THEME_PAGE_SIZE;
-    const last = Math.min(first + THEME_PAGE_SIZE, PALETTES.length);
+
+    const layout = themePageLayout();
+    const pages = Math.max(1, Math.ceil(PALETTES.length / layout.perPage));
+    if (state.themePageSize !== layout.perPage) {
+      const firstVisible = state.themePage * state.themePageSize;
+      state.themePage = clamp(Math.floor(firstVisible / layout.perPage), 0, pages - 1);
+      state.themePageSize = layout.perPage;
+    } else {
+      state.themePage = clamp(state.themePage, 0, pages - 1);
+    }
+
+    const first = state.themePage * layout.perPage;
+    const last = Math.min(first + layout.perPage, PALETTES.length);
+    host.style.gridTemplateColumns = `repeat(${layout.cols}, minmax(0, 1fr))`;
+    host.style.gridTemplateRows = `repeat(${layout.rows}, minmax(${layout.minHeight}px, 1fr))`;
 
     host.replaceChildren();
     PALETTES.slice(first, last).forEach((palette, offset) => {
@@ -1322,8 +1385,6 @@
       button.style.setProperty('--theme-card-bg', palette.vars.card);
       button.style.setProperty('--theme-card-border', palette.vars.border);
       button.style.setProperty('--theme-card-text', palette.vars.white);
-      button.style.setProperty('--theme-card-muted', palette.vars.muted);
-      button.style.setProperty('--theme-card-header', palette.vars.header);
 
       const name = document.createElement('span');
       name.className = 'theme-option-name';
@@ -1331,22 +1392,20 @@
 
       const swatch = document.createElement('span');
       swatch.className = 'theme-swatch';
+      swatch.setAttribute('aria-hidden', 'true');
       VAR_NAMES.forEach((key) => {
         const chip = document.createElement('i');
         chip.style.background = palette.vars[key];
-        chip.style.borderColor = palette.vars.border;
         swatch.appendChild(chip);
       });
 
-      const preview = document.createElement('span');
-      preview.className = 'theme-preview';
-      preview.textContent = 'BG CARD TXT STATUS ACC';
-
-      button.append(name, swatch, preview);
+      button.append(name, swatch);
       button.addEventListener('click', () => applyTheme(index));
       host.appendChild(button);
     });
 
+    const pager = $('#themePager');
+    if (pager) pager.hidden = pages <= 1;
     setText('themePageLabel', `${state.themePage + 1} / ${pages}`);
     const prev = $('#themePrev');
     const next = $('#themeNext');
@@ -1356,7 +1415,7 @@
   }
 
   function changeThemePage(delta) {
-    const pages = Math.max(1, Math.ceil(PALETTES.length / THEME_PAGE_SIZE));
+    const pages = Math.max(1, Math.ceil(PALETTES.length / state.themePageSize));
     const next = clamp(state.themePage + delta, 0, pages - 1);
     if (next === state.themePage) return;
     state.themePage = next;
@@ -2343,7 +2402,7 @@
   }
 
   function setSettingsTab(tab) {
-    state.settingsTab = tab === 'themes' ? 'themes' : 'source';
+    state.settingsTab = SETTINGS_TABS.includes(tab) ? tab : 'source';
     $$('.settings-tab').forEach((button) => {
       const on = button.dataset.settingsTab === state.settingsTab;
       button.classList.toggle('is-active', on);
@@ -2353,7 +2412,7 @@
       panel.hidden = panel.dataset.settingsPanel !== state.settingsTab;
     });
     if (state.settingsTab === 'themes') renderThemeGrid();
-    else renderSettings();
+    else if (state.settingsTab === 'source') renderSettings();
   }
 
   function setPage(name, updateHash = true) {
@@ -2512,6 +2571,19 @@
     $$('.settings-tab').forEach((button) => {
       button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab));
     });
+    const styleToggle = $('#styleBrutalist');
+    if (styleToggle) {
+      styleToggle.addEventListener('change', () => {
+        applyStyle(styleToggle.checked ? 'brutalist' : 'cyd');
+        saveConfig();
+        if (state.page === 'settings' && state.settingsTab === 'themes') renderThemeGrid();
+        requestAnimationFrame(() => {
+          drawAllSparks();
+          if (state.page === 'animation') resizeAnimation();
+        });
+        toast(styleToggle.checked ? 'Neo Brutalist style enabled.' : 'CYD style restored.');
+      });
+    }
     const themePrev = $('#themePrev');
     if (themePrev) themePrev.addEventListener('click', () => changeThemePage(-1));
     const themeNext = $('#themeNext');
@@ -2711,6 +2783,7 @@
       resizeTimer = setTimeout(() => {
         drawAllSparks();
         if (state.page === 'animation') resizeAnimation();
+        if (state.page === 'settings' && state.settingsTab === 'themes') renderThemeGrid();
       }, 140);
     });
 
@@ -2734,6 +2807,7 @@
   // ------------------------------------------------------------------------
   function boot() {
     applyTheme(state.theme);
+    applyStyle(state.style);
     persistenceEnabled = true;
     renderThemeGrid();
     renderSetupPalette();

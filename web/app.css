@@ -1271,7 +1271,7 @@ canvas { max-width: 100%; }
 
 .settings-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--gap);
 }
 .settings-tab {
@@ -1297,6 +1297,11 @@ canvas { max-width: 100%; }
   border-color: var(--gold);
   background: var(--gold);
   color: var(--bg);
+}
+.settings-tab[data-settings-tab="style"].is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .settings-panel {
@@ -1463,17 +1468,17 @@ canvas { max-width: 100%; }
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(96px, 1fr));
   gap: var(--gap);
 }
 .theme-option {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: clamp(0.35rem, 0.9vmin, 0.8rem);
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
   min-width: 0;
   min-height: 0;
-  padding: clamp(10px, 1.4vmin, 22px);
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--theme-card-border, var(--line-strong));
   border-radius: calc(var(--radius) * 0.8);
   background: var(--theme-card-bg, var(--surface-2));
@@ -1483,25 +1488,32 @@ canvas { max-width: 100%; }
   cursor: pointer;
 }
 .theme-option:hover { border-color: var(--theme-card-text, var(--gold)); }
-.theme-option.is-selected {
-  border-color: var(--gold);
-  box-shadow: inset 3px 0 0 var(--gold);
+.theme-option.is-selected { border-color: var(--gold); }
+.theme-option.is-selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 2px solid var(--gold);
+  border-radius: inherit;
+  pointer-events: none;
 }
 .theme-swatch {
-  display: grid;
-  grid-template-columns: repeat(15, minmax(0, 1fr));
-  gap: clamp(2px, 0.55vmin, 6px);
-  min-height: clamp(18px, 4.8vmin, 60px);
+  display: flex;
+  min-width: 0;
+  min-height: 0;
 }
 .theme-swatch i {
   display: block;
+  flex: 1 1 0;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: clamp(1px, 0.4vmin, 4px);
+  min-height: 0;
 }
 .theme-option-name {
   display: block;
+  align-self: center;
   min-width: 0;
+  padding: clamp(8px, 1.2vmin, 18px) clamp(10px, 1.4vmin, 22px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1509,22 +1521,9 @@ canvas { max-width: 100%; }
   font-size: clamp(0.76rem, 1.85vmin, 1.3rem);
   font-weight: 700;
   letter-spacing: 0.04em;
+  line-height: 1.15;
 }
 .theme-option.is-selected .theme-option-name { color: var(--theme-card-text, var(--ink)); }
-.theme-preview {
-  display: block;
-  min-width: 0;
-  padding: 0.3em 0.5em;
-  border: 1px solid var(--theme-card-border, var(--line));
-  background: var(--theme-card-header, var(--surface-2));
-  color: var(--theme-card-text, var(--ink));
-  font-size: clamp(0.72rem, 1.3vmin, 1rem);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .theme-foot {
   flex: 0 0 auto;
   display: flex;
@@ -1555,6 +1554,185 @@ canvas { max-width: 100%; }
 }
 
 /* ==========================================================================
+   STYLE PANEL
+   ========================================================================== */
+
+.style-panel { overflow: auto; }
+.style-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: clamp(12px, 2vmin, 24px);
+  border: 1px solid var(--line-strong);
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--surface-2);
+}
+.style-card-copy {
+  flex: 1 1 22em;
+  min-width: 0;
+}
+.style-card-copy h2 {
+  margin: 0.18em 0 0;
+  color: var(--ink);
+  font-size: clamp(1.05rem, 2.6vmin, 1.65rem);
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+.style-card-copy > p:last-child {
+  max-width: 42em;
+  margin: 0.45em 0 0;
+  color: var(--muted);
+  font-size: clamp(0.72rem, 1.1vmin, 0.92rem);
+  line-height: 1.5;
+}
+.style-toggle {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin-left: auto;
+  padding: 0.35em 0 0.35em 0.35em;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.style-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05em;
+}
+.style-toggle-copy b {
+  color: var(--ink);
+  font-size: clamp(0.82rem, 1.4vmin, 1.05rem);
+  letter-spacing: 0.08em;
+}
+.style-toggle-copy span {
+  color: var(--muted);
+  font-size: clamp(0.58rem, 0.9vmin, 0.72rem);
+  letter-spacing: 0.08em;
+}
+.style-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.switch-track {
+  position: relative;
+  display: block;
+  width: 3.2em;
+  height: 1.85em;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-3);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.switch-thumb {
+  position: absolute;
+  top: 0.2em;
+  left: 0.2em;
+  width: 1.35em;
+  height: 1.35em;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform 140ms ease;
+}
+.style-toggle input:checked + .switch-track {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.style-toggle input:checked + .switch-track .switch-thumb { transform: translateX(1.4em); }
+.style-toggle input:focus-visible + .switch-track {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.style-preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+  padding: clamp(12px, 2vmin, 22px);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--surface);
+}
+.style-preview-label {
+  color: var(--muted);
+  font-size: clamp(0.64rem, 1vmin, 0.82rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.style-preview-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.style-preview-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35em;
+  padding: clamp(10px, 1.7vmin, 20px);
+  border: 1px solid var(--line-strong);
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.style-preview-card--warm {
+  background: var(--accent-2);
+  color: var(--on-accent-2);
+}
+.style-preview-tag {
+  font-size: clamp(0.62rem, 0.95vmin, 0.78rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.style-preview-card b {
+  font-size: clamp(1.1rem, 2.8vmin, 2rem);
+  line-height: 1;
+}
+.style-preview-card i {
+  display: block;
+  height: clamp(7px, 1.1vmin, 11px);
+  overflow: hidden;
+  background: var(--surface-3);
+}
+.style-preview-card i span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.style-preview-card--warm i { background: color-mix(in srgb, var(--on-accent-2) 22%, transparent); }
+.style-preview-card--warm i span { background: var(--on-accent-2); }
+.style-preview-button {
+  align-self: flex-start;
+  padding: 0.45em 0.8em;
+  border: 1px solid var(--line-strong);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: clamp(0.68rem, 1.1vmin, 0.9rem);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+.style-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(0.68rem, 1.05vmin, 0.88rem);
+  line-height: 1.5;
+}
+
+/* ==========================================================================
    TOAST
    ========================================================================== */
 
@@ -1581,6 +1759,121 @@ canvas { max-width: 100%; }
 .toast[data-type="success"] { border-color: var(--ok); color: var(--ok); }
 
 /* ==========================================================================
+   NEO BRUTALIST STYLE
+   The selected color palette stays in charge; this layer only changes form.
+   ========================================================================== */
+
+html[data-style="brutalist"] { --radius: 0px; }
+
+html[data-style="brutalist"] *,
+html[data-style="brutalist"] *::before,
+html[data-style="brutalist"] *::after {
+  border-radius: 0 !important;
+}
+
+html[data-style="brutalist"] .tabs { border-bottom-width: 2px; }
+html[data-style="brutalist"] .nav-button { border-right-width: 2px; }
+html[data-style="brutalist"] .nav-button.is-active { box-shadow: inset 0 5px 0 var(--tab-accent); }
+html[data-style="brutalist"] .tab-status { border-left-width: 2px; }
+
+html[data-style="brutalist"] .cy-card,
+html[data-style="brutalist"] .clock-view,
+html[data-style="brutalist"] .animation-stage,
+html[data-style="brutalist"] .source-card,
+html[data-style="brutalist"] .theme-option,
+html[data-style="brutalist"] .style-card,
+html[data-style="brutalist"] .style-preview,
+html[data-style="brutalist"] .style-preview-card,
+html[data-style="brutalist"] .setup-screen,
+html[data-style="brutalist"] .mode-banner,
+html[data-style="brutalist"] .toast {
+  border-width: 2px;
+  border-color: var(--line-strong);
+  box-shadow: 4px 4px 0 var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-diag-box {
+  border-width: 2px;
+  border-color: var(--line-strong);
+  box-shadow: 3px 3px 0 var(--line-strong);
+}
+
+html[data-style="brutalist"] .source-card.is-active {
+  border-color: var(--accent-3);
+  box-shadow: inset 4px 0 0 var(--accent-3), 4px 4px 0 var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-chart {
+  border-width: 2px;
+  border-color: var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-subhead,
+html[data-style="brutalist"] .setup-bar,
+html[data-style="brutalist"] .cy-diag-title,
+html[data-style="brutalist"] .source-foot,
+html[data-style="brutalist"] .saved-sources,
+html[data-style="brutalist"] .cy-details,
+html[data-style="brutalist"] .setup-foot {
+  border-width: 2px;
+  border-color: var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-button,
+html[data-style="brutalist"] .cy-footer-button,
+html[data-style="brutalist"] .preset,
+html[data-style="brutalist"] .cy-step,
+html[data-style="brutalist"] .settings-tab {
+  border-width: 2px;
+  border-color: var(--line-strong);
+  box-shadow: 3px 3px 0 var(--line-strong);
+}
+html[data-style="brutalist"] .cy-button:active,
+html[data-style="brutalist"] .cy-footer-button:active,
+html[data-style="brutalist"] .preset:active,
+html[data-style="brutalist"] .cy-step:active,
+html[data-style="brutalist"] .settings-tab:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-select,
+html[data-style="brutalist"] .setup-content input,
+html[data-style="brutalist"] .saved-source > button,
+html[data-style="brutalist"] .saved-remove {
+  border-width: 2px;
+  border-color: var(--line-strong);
+  box-shadow: 3px 3px 0 var(--line-strong);
+}
+
+html[data-style="brutalist"] .cy-bar,
+html[data-style="brutalist"] .seconds-track,
+html[data-style="brutalist"] .pomo-progress i {
+  border: 1px solid var(--line-strong);
+}
+
+html[data-style="brutalist"] .banner-symbol,
+html[data-style="brutalist"] .status-dot {
+  border: 1px solid var(--line-strong);
+}
+
+html[data-style="brutalist"] .theme-option.is-selected::after { border-width: 3px; }
+
+html[data-style="brutalist"] .style-toggle .switch-track,
+html[data-style="brutalist"] .style-toggle .switch-thumb {
+  border-width: 2px;
+  border-color: var(--line-strong);
+}
+html[data-style="brutalist"] .style-toggle .switch-track {
+  background: var(--surface-3);
+  box-shadow: 3px 3px 0 var(--line-strong);
+}
+html[data-style="brutalist"] .style-toggle input:checked + .switch-track {
+  border-color: var(--line-strong);
+  background: var(--accent-2);
+}
+
+/* ==========================================================================
    RESPONSIVE — phone portrait and short windows
    ========================================================================== */
 
@@ -1603,7 +1896,6 @@ canvas { max-width: 100%; }
   .cy-diag-log { min-height: 150px; }
   .cy-source-config { grid-template-columns: minmax(0, 1fr); }
   .cy-source-config > div:nth-child(1) { grid-column: auto; }
-  .theme-grid { grid-template-rows: repeat(3, minmax(84px, 1fr)); }
   .clock-view { min-height: min(78dvh, 620px); }
   .animation-hint { display: none; }
 }
@@ -1630,12 +1922,6 @@ canvas { max-width: 100%; }
   .pomo-controls { flex-wrap: wrap; }
   .pomo-presets { order: 3; flex-basis: 100%; }
   .pomo-actions { grid-template-columns: 1fr; }
-  .theme-preview {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    line-height: 1.2;
-  }
 }
 
 @media (max-width: 360px) {
