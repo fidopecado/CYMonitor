@@ -1,5 +1,9 @@
 # CYD Monitor
 
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32-orange?logo=platformio&logoColor=white)](https://platformio.org/)
+[![ESP32](https://img.shields.io/badge/ESP32-3248S035-E7352C?logo=espressif&logoColor=white)](https://www.espressif.com/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
+
 A touch-first ESP32 desk display for live PC telemetry, built around the **ESP32-3248S035 “CYD” 3.5″ board** and **LibreHardwareMonitor**.
 
 The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans the hardware tree for CPU, GPU and RAM sensors, and renders the results on a 480 × 320 TFT with TFT_eSPI. The repository also includes a browser version of the same CYD screens, with an optional live connection to LibreHardwareMonitor, and a Docker image that serves the complete web experience.
@@ -10,14 +14,26 @@ The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans 
 
 > The landing-page simulator is generated. The standalone web app at [`web/app.html`](web/app.html) can fetch a LibreHardwareMonitor `data.json` endpoint directly; it never controls the ESP32.
 
+## Quick start
+
+| Goal | Command |
+| --- | --- |
+| Flash the CYD | `pio run --target upload` |
+| Serve the complete web experience | `docker compose up --build` → <http://localhost:8080> |
+| Preview the static app | `cd web && python -m http.server 8099` → <http://127.0.0.1:8099> |
+| Connect live telemetry | LibreHardwareMonitor → **Options → Remote Web Server → Run** |
+
+The firmware and web app are independent: the CYD can read LibreHardwareMonitor directly over Wi-Fi, while the browser app connects to the same `data.json` endpoint. See [Getting started](#getting-started) for first-boot Wi-Fi setup and live-data details.
+
 ## Contents
 
+- [Quick start](#quick-start)
 - [What it does](#what-it-does)
 - [Screens](#screens)
 - [Architecture](#architecture)
 - [Hardware](#hardware)
 - [Firmware notes](#firmware-notes)
-- [Web demo](#web-demo)
+- [Web app](#web-app)
 - [Repository layout](#repository-layout)
 - [Getting started](#getting-started)
 - [Docker](#docker)
@@ -32,7 +48,7 @@ The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans 
 - **Standby clock** — NTP time from `pool.ntp.org` at GMT+7, with a date line and seconds meter. There is no RTC; the clock depends on Wi-Fi and NTP.
 - **Pomodoro** — 10, 15, 25 and 45-minute presets, 1–60 minute manual adjustment, start/pause/resume/reset, a 24-block progress wave, a five-dot session display and an eight-second PWM backlight alarm.
 - **Animations** — 24-column Matrix rain with 80–160 px/s fall speeds, a 50-star 3D starfield, a bouncing DVD sprite and an on-screen measured-FPS HUD.
-- **Settings** — six saved Wi-Fi profiles, each with its own password and JSON endpoint, plus 18 RGB565 themes in a three-page gallery. Profiles, endpoints and the selected theme are stored in NVS.
+- **Settings** — six saved Wi-Fi profiles, each with its own password and JSON endpoint, plus 18 RGB565 themes. The firmware pages the gallery six at a time and stores profiles, endpoints and the selected theme in NVS. The web app adds adaptive pagination and a persistent **Neo Brutalist** style switch.
 - **Touch UI** — header tabs, tappable cards, long-press to forget a network, swipe paging in the theme gallery and a physical BOOT-button page shortcut.
 
 ## Screens
@@ -42,7 +58,7 @@ The firmware polls a local LibreHardwareMonitor JSON endpoint over Wi-Fi, scans 
 | **Monitor** | CPU/GPU cards, RAM card, 40-sample sparklines and a Wi-Fi diagnostics sub-page. |
 | **Clock** | NTP standby clock and the Pomodoro timer. |
 | **Animation** | Matrix rain, 3D starfield and bouncing DVD modes. |
-| **Settings** | Saved networks and the 18-theme gallery. |
+| **Settings** | Saved networks and themes on the CYD; Sources, Themes and Style (including Neo Brutalist) in the web app. |
 
 The web version contains all four screens. [web/index.html](web/index.html) is the project landing page with an embedded simulator; [web/app.html](web/app.html) opens the CYD interface alone, without site chrome, and can connect to a live LibreHardwareMonitor source.
 
@@ -92,7 +108,7 @@ The pin map, display driver, SPI speeds and partition table are defined in [`pla
 - **Board target:** `esp32dev` with the `huge_app.csv` partition.
 - **Telemetry fetch:** HTTP connect timeout 4 s, response timeout 10 s, JSON nesting limit 12.
 - **Polling:** the fetch task delays 400 ms after each request while the Monitor hardware view is active. History samples are pushed about once per second.
-- **Themes:** 18 palettes in RGB565, shown six at a time in a two-column, three-row gallery. The selection is written to NVS. The firmware restores the last saved theme and falls back to DUO-TONE on first boot; the web demo defaults to E-INK.
+- **Themes:** 18 palettes in RGB565. The firmware shows six at a time in a two-column, three-row gallery and writes the selection to NVS. The web gallery fits 6, 9 or 18 cards per page and defaults to E-INK. Both restore the last saved palette.
 - **Brightness:** the LDR is smoothed and mapped to a PWM duty range of 15–255. During a Pomodoro alarm, the backlight blinks for eight seconds.
 - **Time:** `configTime()` with `pool.ntp.org`, GMT+7 and no daylight-saving offset.
 - **Networking:** six saved profiles are tried automatically. If no profile connects, the board starts the `CYD-MONITOR-AP` captive portal and restarts after the 240-second portal timeout.
@@ -102,14 +118,22 @@ The pin map, display driver, SPI speeds and partition table are defined in [`pla
 The web folder is a dependency-free static site with two entry points:
 
 - [web/index.html](web/index.html) — project landing page with an embedded, generated-telemetry simulator.
-- [web/app.html](web/app.html) — the CYD screens alone: Monitor, Clock/Pomodoro, Animation and Settings.
-- [web/app.css](web/app.css) — fluid full-screen layout for the standalone app.
-- [web/app-live.js](web/app-live.js) — live LibreHardwareMonitor scanner, browser clock, Pomodoro, animations, settings and source handling.
+- [web/app.html](web/app.html) — the CYD screens alone: Monitor, Clock/Pomodoro, Animation and Settings (Sources, Themes and Style).
+- [web/app.css](web/app.css) — fluid full-screen layout and the Neo Brutalist skin.
+- [web/app-live.js](web/app-live.js) — live LibreHardwareMonitor scanner, browser clock, Pomodoro, animations, settings, source handling and persistent UI style.
 - [web/app.js](web/app.js) — theme engine and generated telemetry for the landing-page simulator.
 - [web/theme-data.js](web/theme-data.js) — the shared 18 RGB565 palettes.
 - [web/styles.css](web/styles.css) — landing-page and simulated-device styling.
 
 The standalone app is designed as a web representation of the CYD screens, not a separate dashboard. It fills the available browser or phone viewport, uses the same palette set as the firmware, and keeps the CYD tab structure and screen hierarchy. Clock mode uses the browser's local time and shows the computed GMT offset; there is no NTP requirement on the web.
+
+### Style and themes
+
+Settings has three tabs. The theme gallery measures the available grid and shows 6, 9 or 18 title-and-palette cards per page, so selection stays usable on phones and desktop. The **Style** tab adds a Neo Brutalist switch that changes geometry — square corners, thick outlines, hard offset shadows and chunky controls — while keeping the selected color palette. The choice is stored in browser local storage and applied before CSS loads to avoid a flash of the standard layout.
+
+![Neo Brutalist style enabled in the Settings → Style tab](docs/neo-brutalist.png)
+
+*Neo Brutalist layout with the DRACULA palette. The selected palette and the UI style are independent.*
 
 ### Live LibreHardwareMonitor data
 
@@ -139,7 +163,8 @@ If the source cannot be reached, the app shows a clearly labeled **DEMO** mode o
 │   ├── theme-data.js         # shared 18 RGB565 palettes
 │   └── styles.css            # landing page + simulated-device styles
 ├── docs/
-│   └── preview.png           # browser demo screenshot
+│   ├── preview.png           # landing-page screenshot
+│   └── neo-brutalist.png     # web Style tab screenshot
 ├── deploy/
 │   └── nginx.conf            # static container server config
 ├── Dockerfile                # Nginx image for the web experience
@@ -229,7 +254,9 @@ The image uses Nginx, serves `web/` from `/usr/share/nginx/html`, exposes a `/he
 | Time zone | GMT+7 | `src/main.cpp` |
 | Themes | 18, saved in NVS | `src/main.cpp` |
 | Web themes | 18, shared with the firmware palettes | `web/theme-data.js` |
+| Web theme paging | Adaptive: 6, 9 or 18 cards per page | `web/app-live.js`, `web/app.css` |
 | Web default theme | E-INK | `web/app-live.js`, `web/app.js` |
+| Web UI style | `cyd` or `brutalist` (Neo Brutalist), saved in browser local storage | `web/app-live.js`, `web/app.css` |
 | Web clock | Browser local time and computed GMT offset | `web/app-live.js` |
 | Web live source | Configurable LibreHardwareMonitor `data.json` URL | `web/app.html` setup screen |
 | Container port | 80 (mapped to 8080 by Compose) | `Dockerfile`, `docker-compose.yml` |
