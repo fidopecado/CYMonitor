@@ -3,7 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: cyd-monitor:local
+    image: cymonitor:local
     ports:
       - "8080:80"
+    # Lets the optional /lhm/ proxy in deploy/nginx.conf reach a
+    # LibreHardwareMonitor instance running on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
