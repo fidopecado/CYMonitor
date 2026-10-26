@@ -1,6 +1,6 @@
-# CYD Monitor web app
+# CYMonitor web app
 
-Static, dependency-free web pages for the CYD Monitor project. The pages mirror the firmware's four CYD screens and work on phones, laptops and desktop browsers. The full project overview, firmware build instructions and Docker notes live in the [root README](../README.md).
+Static, dependency-free web pages for the CYMonitor project. The pages mirror the firmware's four CYD screens and work on phones, laptops and desktop browsers. The full project overview, firmware build instructions and Docker notes live in the [root README](../README.md).
 
 ## Pages and files
 

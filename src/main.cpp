@@ -92,7 +92,7 @@ unsigned long pomodoroBlinkStart = 0;
 //  that belongs to that network, so switching networks switches the source.
 // =========================================================================
 #define MAX_WIFI_PROFILES 6
-#define WIFI_AP_SSID "CYD-MONITOR-AP"
+#define WIFI_AP_SSID "CYMonitor-AP"
 #define WIFI_AP_PASS "password123"
 
 struct WifiProfile
@@ -3053,7 +3053,7 @@ void setup()
   tft.setTextDatum(MC_DATUM);
   tft.setTextFont(4);
   tft.setTextColor(T.accent1, T.bg);
-  tft.drawString("CYD MONITOR", 240, 95);
+  tft.drawString("CYMonitor", 240, 95);
   tft.setTextFont(2);
   tft.setTextColor(T.textMuted, T.bg);
   tft.drawString("Connecting to Wi-Fi...", 240, 142);

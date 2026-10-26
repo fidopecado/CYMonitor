@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CYD Monitor Web — live runtime
+   CYMonitor Web — live runtime
    Fetches LibreHardwareMonitor data.json, scans it like src/main.cpp, and
    drives the responsive dashboard in app.html. Demo telemetry is generated
    locally and always labelled.
@@ -2476,7 +2476,7 @@
   function diagnosticsText() {
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     const lines = [
-      'CYD Monitor Web diagnostics',
+      'CYMonitor Web diagnostics',
       `Generated: ${new Date().toISOString()}`,
       `Page: ${location.href}`,
       `Mode: ${state.mode}`,

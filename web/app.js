@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CYD Monitor — interactive simulation of src/main.cpp
+   CYMonitor — interactive simulation of src/main.cpp
    ========================================================================== */
 (() => {
   'use strict';

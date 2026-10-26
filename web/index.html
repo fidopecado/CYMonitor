@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CYD Monitor — ESP32 PC Telemetry Dashboard</title>
+<title>CYMonitor — ESP32 PC Telemetry Dashboard</title>
 <meta name="description" content="A touch-first ESP32-3248S035 dashboard for local PC telemetry from LibreHardwareMonitor, plus a browser recreation of its 480x320 interface." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0d10'/%3E%3Crect x='5' y='8' width='22' height='16' rx='2' fill='%23051f'/%3E%3Crect x='8' y='11' width='7' height='3' fill='%23fc40'/%3E%3Crect x='8' y='16' width='13' height='2' fill='%23ffffff' opacity='.7'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="styles.css?v=17" />
@@ -15,7 +15,7 @@
     <span class="brand-mark" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="4.5" width="19" height="15" rx="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M7 9h5M7 12h8M7 15h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
     </span>
-    <span>CYD<span class="brand-dot">.</span>MONITOR</span>
+    <span>CY<span class="brand-dot">.</span>MONITOR</span>
   </a>
   <nav class="nav-links" aria-label="Sections">
     <a href="#overview">Overview</a>
@@ -290,7 +290,7 @@
       <p class="eyebrow"><span></span>Project overview</p>
       <h2>A desk display for the numbers you actually watch.</h2>
       <p class="section-lede">
-        CYD Monitor is a personal hardware and web project. The firmware runs on a single
+        CYMonitor is a personal hardware and web project. The firmware runs on a single
         ESP32-3248S035 board; this site presents the build and recreates the interface in the browser.
       </p>
     </div>
@@ -299,7 +299,7 @@
       <article class="brief-card">
         <span class="brief-no">01 / Brief</span>
         <h3>Glanceable, not another window.</h3>
-        <p>PC temperatures and loads usually live behind a desktop app. CYD Monitor puts the essentials on a dedicated 3.5-inch panel that stays on the desk.</p>
+        <p>PC temperatures and loads usually live behind a desktop app. CYMonitor puts the essentials on a dedicated 3.5-inch panel that stays on the desk.</p>
       </article>
       <article class="brief-card">
         <span class="brief-no">02 / Approach</span>
@@ -408,7 +408,7 @@
           </li>
           <li>
             <span class="step-no">03</span>
-            <div><h3>Join the setup AP</h3><p>On first boot, connect to <code>CYD-MONITOR-AP</code> and open <code>192.168.4.1</code>. Pick the network and paste its JSON URL; the profile is saved in NVS.</p></div>
+            <div><h3>Join the setup AP</h3><p>On first boot, connect to <code>CYMonitor-AP</code> and open <code>192.168.4.1</code>. Pick the network and paste its JSON URL; the profile is saved in NVS.</p></div>
           </li>
           <li>
             <span class="step-no">04</span>
@@ -530,7 +530,7 @@
   </section>
 
   <footer class="site-foot">
-    <div class="foot-brand">CYD<span>.</span>MONITOR</div>
+    <div class="foot-brand">CY<span>.</span>MONITOR</div>
     <p>A browser recreation of the 480 × 320 interface. The demo is simulated; the firmware in <code>src/main.cpp</code> is the real build.</p>
     <p class="foot-muted">ESP32 · TFT_eSPI · LibreHardwareMonitor · PlatformIO · Docker</p>
   </footer>
