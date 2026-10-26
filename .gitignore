@@ -3,3 +3,12 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local capture scratch files
+docs/*.mov
+docs/*.mp4

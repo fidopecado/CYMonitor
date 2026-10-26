@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and troubleshooting
+    url: https://github.com/fidopecado/CYMonitor#getting-started
+    about: First-boot Wi-Fi setup, LibreHardwareMonitor and Docker instructions.
+  - name: Live browser demo
+    url: https://fidopecado.github.io/CYMonitor/
+    about: Try the interface before flashing a board. The demo uses generated telemetry.

@@ -1,0 +1,62 @@
+name: Board variant report
+description: This project targets the ESP32-3248S035. Tell us what your CYD variant needs.
+title: "[board] "
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing another CYD variant. Please include enough detail that the pin map can be reproduced.
+
+  - type: input
+    id: board
+    attributes:
+      label: Board marking
+      description: What is printed on the PCB or the listing title?
+      placeholder: ESP32-3248S035 / ESP32-2432S028 / other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Display controller
+      options:
+        - ST7796
+        - ILI9341
+        - ST7789
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: resolution
+    attributes:
+      label: Resolution and orientation
+      placeholder: 480x320 landscape
+    validations:
+      required: true
+
+  - type: textarea
+    id: pins
+    attributes:
+      label: Pin map
+      description: TFT and touch pins, plus the backlight pin if it differs.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: change
+    attributes:
+      label: What you changed to make it work
+      description: platformio.ini build flags, driver defines, rotation, or firmware edits.
+      render: text
+
+  - type: checkboxes
+    id: confirmed
+    attributes:
+      label: Confirmation
+      options:
+        - label: I built from the current main branch, not an older checkout.
+          required: true
