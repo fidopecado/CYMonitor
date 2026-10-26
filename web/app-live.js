@@ -2828,6 +2828,15 @@
 
     requestAnimationFrame(animationLoop);
 
+    // `?demo=1` skips the source-setup form and starts the generated-telemetry
+    // demo. The portfolio showcase embeds this so a first-time visitor lands on
+    // the interface instead of a connection form.
+    if (!loaded.hasStored && new URLSearchParams(location.search).get('demo') === '1') {
+      setDemoState();
+      showDashboard();
+      return;
+    }
+
     if (!loaded.hasStored) {
       showSetup();
       return;
